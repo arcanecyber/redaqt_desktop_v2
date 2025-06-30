@@ -1,0 +1,15 @@
+# redaqt/config/apis.yaml
+
+redaqt:
+  base:            "https://api.redaqt.co"
+  homepage:        "https://redaqt.co"
+  help_page:       "https://redaqt.co/help"
+  encrypt:         "https://api.redaqt.co/encrypt"
+  decrypt:         "https://api.redaqt.co/decrypt"
+  status:          "https://api.redaqt.co/status"
+
+account:
+  login:           "http://127.0.0.1:8000/auth"
+  base:            "https://account.redaqt.co"
+  forgot_password: "${account.base}/forgot_password"
+  create_account:  "${account.base}/create_account"

@@ -1,0 +1,20 @@
+default_settings:
+  add_certificate: false
+  appearance: dark
+  mfa:
+    methods:
+      bio: false
+      hardware_key: false
+      pin: false
+      totp: false
+    mfa_active: false
+  request_receipt:
+    on_delivery: false
+    on_request: false
+  smart_policy:
+    methods:
+      lock_to_user: false
+      do_not_open_after: false
+      do_not_open_before: false
+      no_policy: true
+      passphrase: false
