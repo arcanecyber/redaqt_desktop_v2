@@ -7,7 +7,7 @@ from PySide6.QtCore    import Qt
 class ReceiptWidget(QWidget):
     """
     Widget for “Add Request Receipt”:
-    – Title above the box outline
+    – Title inside the box outline (styled like SmartPolicyView)
     – Two checkboxes (“On request” & “On delivery”)
     – 1px solid border from theme border_focus, radius 10px, transparent bg
     – Disabled unless account_type is Pro/Trial
@@ -28,27 +28,24 @@ class ReceiptWidget(QWidget):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(5)
 
-        # 1) Title label above the box
-        title = QLabel("Add Request Receipt")
+        # Box container with title and border
+        self.policy_box = QGroupBox(self)
+        self.policy_box.setTitle("Add Request Receipt")
         fg = colors.get("foreground", "#000000")
-        title.setStyleSheet(f"background: transparent; color: {fg};")
-        main_layout.addWidget(title)
-
-        # 2) Box container with border
-        box = QGroupBox()
         border = colors.get("border_focus", "#AAAAAA")
-        box.setStyleSheet(
+        self.policy_box.setStyleSheet(
             f"QGroupBox {{\n"
             f"  background: transparent;\n"
             f"  border: 1px solid {border};\n"
             f"  border-radius: 10px;\n"
+            f"  color: {fg};\n"
+            f"  font-size: 14px;\n"
+            f"  font-weight: bold;\n"
             f"}}"
         )
-        # match height of SmartPolicyWidget
-        #box.setFixedHeight(150)
 
         # Inner layout for checkboxes
-        inner = QHBoxLayout(box)
+        inner = QHBoxLayout(self.policy_box)
         inner.setContentsMargins(10, 10, 10, 10)
         inner.setSpacing(20)
 
@@ -58,7 +55,7 @@ class ReceiptWidget(QWidget):
         self.cb_request.setChecked(on_request)
         self.cb_delivery.setChecked(on_delivery)
 
-        # 3) Disable if not Pro/Trial
+        # Disable if not Pro/Trial
         if account_type.lower() not in ("pro", "trial"):
             self.cb_request.setEnabled(False)
             self.cb_delivery.setEnabled(False)
@@ -66,7 +63,7 @@ class ReceiptWidget(QWidget):
         inner.addWidget(self.cb_request, alignment=Qt.AlignLeft)
         inner.addWidget(self.cb_delivery, alignment=Qt.AlignLeft)
 
-        main_layout.addWidget(box)
+        main_layout.addWidget(self.policy_box)
 
     def get_values(self) -> dict:
         """Return the current receipt settings."""

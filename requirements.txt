@@ -5,3 +5,5 @@ PyYAML
 reportlab
 pypdf
 requests
+pydantic
+PyJWT
