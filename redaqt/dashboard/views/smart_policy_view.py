@@ -10,19 +10,19 @@ from redaqt.theme.context import ThemeContext
 from redaqt.ui.view_styling import get_transparent_view_stylesheet
 from redaqt.dashboard.dialogs.calendar_select import CalendarSelectDialog
 from redaqt.dashboard.dialogs.passphrase import PassphraseDialog
+from redaqt.dashboard.dialogs.contacts_popup import ContactsPopup
 
 
 class SmartPolicyView(QWidget):
     OPTIONS = [
         ("no_policy",           "None"),
-        ("passphrase",          "Add Passphrase"),
+        ("open_with_keyword",   "Add passphrase"),
         ("do_not_open_before",  "Do not open before"),
         ("do_not_open_after",   "Do not open after"),
-        ("lock_to_user",        "Lock to User"),
+        ("lock_to_user",        "Lock to user"),
     ]
 
     _RESTRICTED = {
-        'open_with_pin',
         'do_not_open_before',
         'do_not_open_after',
         'lock_to_user',
@@ -138,7 +138,7 @@ class SmartPolicyView(QWidget):
                     self.selected_datetime = None
                     self.buttons["no_policy"].setChecked(True)
 
-            elif code == "passphrase":
+            elif code == "open_with_keyword":
                 dialog = PassphraseDialog(parent=self)
                 if dialog.exec():
                     result = dialog.get_passphrase()
@@ -153,6 +153,24 @@ class SmartPolicyView(QWidget):
                         self.buttons["no_policy"].setChecked(True)
                 else:
                     self.passphrase = None
+                    self.buttons["no_policy"].setChecked(True)
+
+
+
+            elif code == "lock_to_user":
+                main_win = self.window()
+                user_alias = getattr(getattr(main_win, "user_data", None), "user_alias", None)
+
+                dialog = ContactsPopup(theme_context=self.theme_context, user_alias=user_alias, parent=self)
+                if dialog.exec():
+                    selected_user = dialog.get_selected_user()
+                    if not selected_user:
+                        self.buttons["no_policy"].setChecked(True)
+                    else:
+                        protection_page = self.parent()
+                        if hasattr(protection_page, "selected_user_alias"):
+                            protection_page.selected_user_alias = selected_user
+                else:
                     self.buttons["no_policy"].setChecked(True)
 
         return handler

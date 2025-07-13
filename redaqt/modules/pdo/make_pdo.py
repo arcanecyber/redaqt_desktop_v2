@@ -1,13 +1,13 @@
 """
-File: /main/modules/pdo_generator/make_pdo.py
+File: /redaqt/modules/pdo/make_pdo.py
 Author: Jonathan Carr
 Arcane Cyber, LLC
 https://arcanecyber.net
 contact@arcanecyber.net
-Copyright 2024 - All rights reserved
+Copyright 2025 - All rights reserved
 
-Date: September 2024
-Description: Main application API function
+Date: July 2025
+Description: PDO Generator
 """
 
 import inspect
@@ -19,12 +19,12 @@ from reportlab.pdfgen import canvas
 from pypdf import PdfReader, PdfWriter
 
 
-def create_pdo_base(log_sys_event, sys_config, message) -> tuple[bool, str]:
-    """ Generate the base PDO to save Ephemeral metadata, encrypted policy, and encrypted data object.
+def create_pdo_base(sys_config, message) -> tuple[bool, str]:
+    """ Generate the base PDO to save Ephemeral metadata, encrypted policy, DaVinci certificate,
+        and encrypted data object.
         *** Note; The Protected Document Object utilizes a PDF format.
 
         Args:
-            log_sys_event: class -- debugger and event logger settings set at runtime
             sys_config: class -- system and application configuration settings set at runtime
             message: class -- filename and directory for file - provided from Gateway
 
@@ -83,7 +83,7 @@ def create_pdo_base(log_sys_event, sys_config, message) -> tuple[bool, str]:
     return True, filename
 
 
-def write_metadata(log_sys_event, sys_config, filename: str, init_vector: str, encrypted_sp: str,
+def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
                    smart_policy_block_signature_hash: str, metadata) -> bool:
     """ Build the metadata and embed into the PDO
 
@@ -117,27 +117,28 @@ def write_metadata(log_sys_event, sys_config, filename: str, init_vector: str, e
     # Prepare metadata
     metadata = {
             "/Producer": "pypdf",
-            "/Author": sys_config.product.author,
-            "/Copyright": sys_config.product.copyright,
-            "/Product": sys_config.product.name,
-            "/MOS_Version": metadata.content.data.mos_version,
-            "/Encryptor_Version": sys_config.product.version,
-            "/Protocol": metadata.content.data.protocol,
-            "/Protocol_Version": metadata.content.data.protocol_version,
-            "/Encryption_Algorithm": sys_config.crypto.encryption_algorithm,
-            "/Encryption_Key_Length": sys_config.crypto.encryption_key_length,
-            "/Encryption_Mode": sys_config.crypto.encryption_mode,
-            "/Hash_Algorithm": sys_config.crypto.hash_algorithm,
-            "/MID": metadata.content.data.pqc.mid,
-            "/FID": metadata.content.data.pqc.fid,
-            "/PQ_Type": metadata.content.data.pqc.pq_type,
-            "/PQC_i": metadata.content.data.pqc.point['i'],
-            "/PQC_j": metadata.content.data.pqc.point['j'],
-            "/PQC_k": metadata.content.data.pqc.point['k'],
-            "/PQC_r": metadata.content.data.pqc.point['radius'],
+            "/Author": user_data.metadata.author,
+            "/Copyright": user_data.metadata.copyright,
+            "/Product": user_data.product.name,
+            "/Product_Version": user_data.product.version,
+            "/Encryption_Algorithm": user_data.crypto_config.encryption_algorithm,
+            "/Encryption_Key_Length": user_data.crypto_config.encryption_key_length,
+            "/Encryption_Mode": user_data.crypto_config.encryption_mode,
+            "/Hash_Algorithm": user_data.crypto_config.hash_algorithm,
+            "/MOS_Version": incoming_encrypt.data.mos_version,
+            "/Protocol": incoming_encrypt.data.protocol,
+            "/Protocol_Version": incoming_encrypt.data.protocol_version,
+            "/MID": incoming_encrypt.data.pqc.mid,
+            "/FID": incoming_encrypt.data.pqc.fid,
+            "/PQ_Type": incoming_encrypt.data.pqc.pq_type,
+            "/PQC_i": incoming_encrypt.data.pqc.point.i,
+            "/PQC_j": incoming_encrypt.data.pqc.point.j,
+            "/PQC_k": incoming_encrypt.data.pqc.point.k,
+            "/PQC_r": incoming_encrypt.data.pqc.point.radius,
             "/IV": init_vector,
             "/Signature": smart_policy_block_signature_hash,
             "/Smart_Policy": encrypted_sp,
+            "/DaVinci_Certificate": davinci_cert,
             "/Encrypted_filename": "not_used",
             "/Encrypted_data": "not_used"
     }

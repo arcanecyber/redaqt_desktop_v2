@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from redaqt.models.defaults import DefaultSettings
+from redaqt.models.app_config import AppConfig
 
 class SettingsManager:
     """
@@ -98,3 +99,10 @@ class SettingsManager:
         """
         raw = self.get_default("default_settings", default={})
         return DefaultSettings(**raw)
+
+    def get_validated_config(self) -> AppConfig:
+        """
+        Validate & return an AppConfig model built from config.yaml.
+        Raises on schema errors.
+        """
+        return AppConfig(**self._config)

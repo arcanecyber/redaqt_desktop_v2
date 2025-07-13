@@ -1,15 +1,15 @@
-Metadata:
+metadata:
   author: Arcane Cyber, LLC
   copyright: Copyright 2025
 
-Product:
+product:
   name: RedaQt
   major_version: 2
   minor_version: 1
   patch_version: 0
   extension: epf
 
-CryptoConfig:
+crypto_config:
   encryption_algorithm: aes
   encryption_key_length: 256
   encryption_mode: cbc

@@ -28,6 +28,8 @@ class ProtectionFlowPage(QWidget):
         self.account_type = account_type
         self.current_paths: list[str] = []
 
+        self.selected_user_alias: str | None = None  # Store alias returned from ContactsPopup
+
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         layout.setSpacing(10)
@@ -110,6 +112,10 @@ class ProtectionFlowPage(QWidget):
             print("[DEBUG] No UserData found on main window")
             return
 
+        # Capture alias set from ContactsPopup (if available)
+        if hasattr(main_win, "selected_user_alias"):
+            self.selected_user_alias = main_win.selected_user_alias
+
         chosen_policy = self.policy_widget.get_selected_key()
         policy_datetime = self.policy_widget.get_selected_datetime()
         passphrase = self.policy_widget.get_passphrase()
@@ -119,6 +125,8 @@ class ProtectionFlowPage(QWidget):
         print(f"[DEBUG] datetime restriction = {policy_datetime}")
         print(f"[DEBUG] passphrase = {passphrase}")
         print(f"[DEBUG] receipt = {receipt_info}")
+        print(f"[DEBUG] selected user alias = {self.selected_user_alias}")  # ✅ Shows alias from ContactsPopup
+        print(f"[DEBUG] User Data = {main_win.user_data.product.version}")
 
         for full in self.current_paths:
             dirpath, fname = os.path.split(full)
@@ -133,6 +141,7 @@ class ProtectionFlowPage(QWidget):
             }
 
             is_error, msg, incoming_encrypt = request_key(main_win.user_data)
+            print(f"[DEBUG] Incoming Encrypt = {incoming_encrypt.data}")
 
             if is_error:
                 print(f"[DEBUG] Request key failed: {msg}")
@@ -152,33 +161,31 @@ class ProtectionFlowPage(QWidget):
         if hasattr(self.receipt_widget, "update_theme"):
             self.receipt_widget.update_theme(ctx)
 
-
     def create_smart_policy_block(self):
-
-        unencrypted_policy: dict = {'id': get_string_256(),
-                                    'date_time': str(datetime.now()),
-                                    'service': {'policy': {'type': 'pe',  # Policy Engine
-                                                           'version': '2.1.0'},
-                                                'comms': {'type': 'cm',  # Comms Manager
-                                                          'version': '2.1.0'},
-                                                },
-                                    'policy': [
-                                        {'protocol': 'no_policy',
-                                         'resource': None,
-                                         'target': None,
-                                         'auto': False,
-                                         'form': {'method': None,
-                                                  'length': 0},
-                                         'action': None,
-                                         'condition': None
-                                         }
-                                    ],
-                                    'receipt': {'receipt_timing': {'on_request': False,
-                                                                   'on_delivery': False},
-                                                'resource': None,
-                                                'service': None,  # would be Verizon, ATT, etc.
-                                                'target': None,
-                                                }
-                                    }
+        unencrypted_policy: dict = {
+            'id': get_string_256(),
+            'date_time': str(datetime.now()),
+            'service': {
+                'policy': {'type': 'pe', 'version': '2.1.0'},
+                'comms': {'type': 'cm', 'version': '2.1.0'},
+            },
+            'policy': [
+                {
+                    'protocol': 'no_policy',
+                    'resource': None,
+                    'target': None,
+                    'auto': False,
+                    'form': {'method': None, 'length': 0},
+                    'action': None,
+                    'condition': None
+                }
+            ],
+            'receipt': {
+                'receipt_timing': {'on_request': False, 'on_delivery': False},
+                'resource': None,
+                'service': None,
+                'target': None,
+            }
+        }
 
         return unencrypted_policy

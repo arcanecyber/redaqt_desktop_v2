@@ -17,6 +17,7 @@ from redaqt.theme.context import ThemeContext
 from redaqt.modules.security.mfa_pin import retrieve_and_decrypt_auth_key
 from redaqt.dashboard.dialogs.enter_mfa_pin import EnterMFAPinDialog
 from redaqt.modules.reset_ui.reset_default import reset_default_yaml
+from redaqt.models.app_config import AppConfig
 
 # Constants
 SERVICE_NAME = "RedaQt"
@@ -31,9 +32,7 @@ def decrypt_account_data(encrypted_data: bytes, password: str) -> Optional[dict]
     try:
         f = Fernet(password.encode())
         return json.loads(f.decrypt(encrypted_data))
-    except (InvalidToken, json.JSONDecodeError):
-        return None
-    except ValueError:
+    except (InvalidToken, json.JSONDecodeError, ValueError):
         return None
 
 
@@ -47,22 +46,25 @@ def load_palettes(ini_path: Path) -> Dict[str, Dict[str, str]]:
     return {section.lower(): dict(cfg[section]) for section in cfg.sections()}
 
 
-def handle_pin_auth(mfa_settings) -> Optional[UserData]:
+def handle_pin_auth(mfa_settings, config_model) -> Optional[UserData]:
     def handle_mfa_pin(pin: str):
         nonlocal decrypted_user
         auth_key = retrieve_and_decrypt_auth_key(pin)
         if not auth_key:
-            #print("[MFA] KEY DECRYPTION FAILED")
             return
         user_data = decrypt_account_data(ACCOUNT_FILE.read_bytes(), auth_key)
         if isinstance(user_data, dict):
-            decrypted_user = UserData(**user_data)
+            decrypted_user = UserData(
+                **user_data,
+                metadata=config_model.metadata,
+                product=config_model.product,
+                crypto_config=config_model.crypto_config
+            )
 
     decrypted_user = None
     dialog = EnterMFAPinDialog(on_pin_entered=handle_mfa_pin)
     result = dialog.exec()
     if result != QDialog.Accepted:
-        #print("[MFA] Dialog rejected. Exiting.")
         sys.exit(0)
     return decrypted_user
 
@@ -75,17 +77,22 @@ def main():
 
     # --- Load settings ---
     settings_mgr = SettingsManager(
-        default_path=Path(DEFAULT_YAML),
-        config_path=Path(CONFIG_YAML)
+        default_path=DEFAULT_YAML,
+        config_path=CONFIG_YAML
     )
     app.settings = settings_mgr
+
     try:
         validated = settings_mgr.get_validated_defaults()
     except Exception as e:
-        #print(f"[Fatal] Invalid settings format: {e}")
         sys.exit(1)
 
     app.settings_model = validated
+
+    try:
+        app.config_model = settings_mgr.get_validated_config()
+    except Exception as e:
+        sys.exit(1)
 
     # --- Theme setup ---
     appearance = validated.appearance
@@ -99,49 +106,57 @@ def main():
 
     # --- Check for existence of data/account file ---
     if not ACCOUNT_FILE.exists():
-
-        # --- No account file: login first ---
         login = LoginWindow()
         result = login.exec()
         if result != QDialog.Accepted or not hasattr(login, "user_data"):
-            #print(f"[Login] Failed or canceled. Exiting. {result}")
             sys.exit(0)
-        user = login.user_data
-
+        user = UserData(
+            **login.user_data.dict(),
+            metadata=app.config_model.metadata,
+            product=app.config_model.product,
+            crypto_config=app.config_model.crypto_config
+        )
     else:
-        # --- Account file exists: check MFA ---
         user = None
         mfa_settings = validated.mfa
         methods = mfa_settings.methods
 
-        # --- Check MFA is set True/False ---
         if mfa_settings.mfa_active:
-
-            # --- Check MFA/PIN is set True/False ---
             if methods.pin:
-                user = handle_pin_auth(mfa_settings)
-
+                user = handle_pin_auth(mfa_settings, app.config_model)
             elif not any([methods.pin, methods.bio, methods.totp, methods.hardware_key]):
                 login = LoginWindow()
                 result = login.exec()
                 if result != QDialog.Accepted or not hasattr(login, "user_data"):
-                    #print("[Login] Failed or canceled. Exiting.")
                     sys.exit(0)
-                user = login.user_data
+                user = UserData(
+                    **login.user_data.dict(),
+                    metadata=app.config_model.metadata,
+                    product=app.config_model.product,
+                    crypto_config=app.config_model.crypto_config
+                )
             else:
-                #print("Something happened here")
                 login = LoginWindow()
                 result = login.exec()
                 if result != QDialog.Accepted or not hasattr(login, "user_data"):
-                    #print("[Login] Failed or canceled. Exiting.")
                     sys.exit(0)
-                user = login.user_data
+                user = UserData(
+                    **login.user_data.dict(),
+                    metadata=app.config_model.metadata,
+                    product=app.config_model.product,
+                    crypto_config=app.config_model.crypto_config
+                )
         else:
             auth_key = get_stored_auth_key()
             if auth_key:
                 user_data = decrypt_account_data(ACCOUNT_FILE.read_bytes(), auth_key)
                 if isinstance(user_data, dict):
-                    user = UserData(**user_data)
+                    user = UserData(
+                        **user_data,
+                        metadata=app.config_model.metadata,
+                        product=app.config_model.product,
+                        crypto_config=app.config_model.crypto_config
+                    )
 
     # --- Fallback to login if user still not loaded ---
     if not user:
@@ -159,11 +174,9 @@ def main():
                 msg_box.setStandardButtons(QMessageBox.Cancel | QMessageBox.Ok)
                 msg_box.setIcon(QMessageBox.Warning)
 
-                # Rename buttons
                 msg_box.button(QMessageBox.Ok).setText("Accept")
                 msg_box.button(QMessageBox.Cancel).setText("Cancel")
 
-                # Remove borders via stylesheet
                 msg_box.setStyleSheet("""
                     QMessageBox {
                         background-color: #1e1e1e;
@@ -192,35 +205,42 @@ def main():
                 user_choice = msg_box.exec()
 
                 if user_choice == QMessageBox.Ok:
-                    # --- Accept: Clear state and show login ---
                     try:
                         if ACCOUNT_FILE.exists():
                             ACCOUNT_FILE.unlink()
                         keyring.set_password(SERVICE_NAME, AUTH_KEY, "")
-                        reset_default_yaml()  # ✅ Reset default.yaml config
+                        reset_default_yaml()
                     except Exception as e:
                         QMessageBox.critical(None, "Reset Failed", f"Could not reset account: {e}")
                         continue
 
-                    # --- Launch login window ---
                     login = LoginWindow()
                     result = login.exec()
                     if result == QDialog.Accepted and hasattr(login, "user_data"):
-                        user = login.user_data
+                        user = UserData(
+                            **login.user_data.dict(),
+                            metadata=app.config_model.metadata,
+                            product=app.config_model.product,
+                            crypto_config=app.config_model.crypto_config
+                        )
                         break
                     else:
                         sys.exit(0)
-
                 else:
-                    continue  # Cancel clicked, retry PIN
+                    continue
 
             if result == QDialog.Accepted and hasattr(app, "_mfa_pin"):
                 auth_key = retrieve_and_decrypt_auth_key(app._mfa_pin)
                 if auth_key:
                     user_data = decrypt_account_data(ACCOUNT_FILE.read_bytes(), auth_key)
                     if isinstance(user_data, dict):
-                        user = UserData(**user_data)
-                        break  # Successful decryption
+                        user = UserData(
+                            **user_data,
+                            metadata=app.config_model.metadata,
+                            product=app.config_model.product,
+                            crypto_config=app.config_model.crypto_config
+                        )
+                        break
             else:
                 sys.exit(0)
 

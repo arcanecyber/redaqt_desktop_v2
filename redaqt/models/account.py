@@ -30,8 +30,10 @@ class CryptoConfig(BaseModel):
 
 class UserData(BaseModel):
     # --- your existing account fields ---
+    account_id: str
     user_fname: str
     user_lname: str
+    user_alias: str
     user_email: str
     user_id:    str
     account_type: str
