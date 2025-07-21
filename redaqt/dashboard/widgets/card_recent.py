@@ -1,14 +1,15 @@
 # redaqt/dashboard/widgets/card_recent.py
 
 from pathlib import Path
-import json
 
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QLabel, QSizePolicy, QApplication
 from PySide6.QtGui     import QPixmap, QMouseEvent
 from PySide6.QtCore    import Qt, Signal
 
 from redaqt.ui.button import get_standard_hover_stylesheet
+from redaqt.modules.pdo.access_pdo import access_document
 
+PROTECTED_FILE_EXTENSION = "epf"
 
 class CardRecent(QWidget):
     """
@@ -23,20 +24,23 @@ class CardRecent(QWidget):
     decryptRequested = Signal(str)
 
     def __init__(
-        self,
-        filename: str,
-        filename_extension: str,
-        file_path: str,
-        date_protected: str,
-        assets_dir: Path = None,
-        parent=None
+            self,
+            filename: str,
+            filename_extension: str,
+            file_path: str,
+            date_protected: str,
+            key: str = "",
+            assets_dir: Path = None,
+            parent=None
     ):
         super().__init__(parent)
-        self.filename       = filename
-        self.file_path      = file_path
-        self.date_protected = date_protected
-        self.assets_dir     = Path(assets_dir or "assets")
-        self.theme          = QApplication.instance().theme.lower()
+        self.filename           = filename
+        self.filename_extension = filename_extension
+        self.file_path          = file_path
+        self.date_protected     = date_protected
+        self.key                = key
+        self.assets_dir         = Path(assets_dir or "assets")
+        self.theme              = QApplication.instance().theme.lower()
 
         # sizing
         self.setFixedHeight(56)
@@ -101,5 +105,21 @@ class CardRecent(QWidget):
         self._apply_style()
 
     def mousePressEvent(self, event: QMouseEvent):
+        # Validate that this is an .epf file based on key
+        if not self.key.lower().endswith(f".{PROTECTED_FILE_EXTENSION}"):
+            print(f"[CardRecent] Skipping: {self.key} is not a .{PROTECTED_FILE_EXTENSION} file.")
+            return
+
+        full_filename = f"{self.filename}.{self.filename_extension}.{PROTECTED_FILE_EXTENSION}"
+
+        # Call access logic
+        access_document(full_filename, self.key)
+
+        # Switch to Access Flow page
+        main_window = self.window()
+        if hasattr(main_window, "on_item_selected") and hasattr(main_window, "access_page"):
+            main_window.on_item_selected("Access Flow")
+            main_window.access_page.process_protected_document(self.key)
+
         self.decryptRequested.emit(self.file_path)
         super().mousePressEvent(event)

@@ -17,7 +17,6 @@ from redaqt.theme.context import ThemeContext
 from redaqt.modules.security.mfa_pin import retrieve_and_decrypt_auth_key
 from redaqt.dashboard.dialogs.enter_mfa_pin import EnterMFAPinDialog
 from redaqt.modules.reset_ui.reset_default import reset_default_yaml
-from redaqt.models.app_config import AppConfig
 
 # Constants
 SERVICE_NAME = "RedaQt"
@@ -84,14 +83,14 @@ def main():
 
     try:
         validated = settings_mgr.get_validated_defaults()
-    except Exception as e:
+    except Exception(BaseException):
         sys.exit(1)
 
     app.settings_model = validated
 
     try:
         app.config_model = settings_mgr.get_validated_config()
-    except Exception as e:
+    except Exception(BaseException):
         sys.exit(1)
 
     # --- Theme setup ---

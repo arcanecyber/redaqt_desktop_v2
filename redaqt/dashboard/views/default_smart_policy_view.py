@@ -12,7 +12,7 @@ class DefaultSmartPolicy(QWidget):
     """
     OPTIONS = [
         ("no_policy",           "None"),
-        ("passphrase",          "Add Passphrase"),
+        ("open_with_keyword",   "Add Passphrase"),
         ("do_not_open_before",  "Do not open before"),
         ("do_not_open_after",   "Do not open after"),
         ("lock_to_user",        "Lock to User"),

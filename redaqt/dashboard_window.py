@@ -27,6 +27,7 @@ from redaqt.dashboard.pages.messages_page          import MessagesPage
 from redaqt.dashboard.pages.address_book_page      import AddressBookPage
 from redaqt.dashboard.pages.protection_flow_page   import ProtectionFlowPage
 from redaqt.dashboard.pages.settings_page          import SettingsPage
+from redaqt.dashboard.pages.access_flow_page       import AccessFlowPage
 
 
 class DashboardWindow(QMainWindow):
@@ -93,8 +94,11 @@ class DashboardWindow(QMainWindow):
         self.folder_selection_page  = FolderSelectionPage(self.theme_context, self.assets_dir, parent=central)
         self.messages_page          = MessagesPage(self.theme_context, self.assets_dir, parent=central)
         self.address_book_page      = AddressBookPage(self.theme_context, self.assets_dir, parent=central)
-        self.protection_page        = ProtectionFlowPage(self.theme_context, getattr(self.user_data, "account_type", "Guest"), parent=central)
+        self.protection_page        = ProtectionFlowPage(self.theme_context, getattr(self.user_data, "account_type", "Guest"),
+                                                         parent=central)
         self.settings_page          = SettingsPage(self.theme_context, self.assets_dir, parent=central)
+        self.access_page            = AccessFlowPage(self.theme_context, getattr(self.user_data, "account_type", "Guest"),
+                                                     self.assets_dir, parent=central)
 
         # Add pages to the stack
         for page in (
@@ -104,7 +108,8 @@ class DashboardWindow(QMainWindow):
             self.messages_page,
             self.address_book_page,
             self.protection_page,
-            self.settings_page
+            self.settings_page,
+            self.access_page
         ):
             self.pages.addWidget(page)
 
@@ -160,6 +165,7 @@ class DashboardWindow(QMainWindow):
             "Contacts":         self.address_book_page,
             "Protection Flow":  self.protection_page,
             "Settings":         self.settings_page,
+            "Access Flow":      self.access_page,
         }
         page = mapping.get(label, self.file_selection_page)
         self.pages.setCurrentWidget(page)

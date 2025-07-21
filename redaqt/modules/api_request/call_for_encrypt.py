@@ -47,7 +47,9 @@ def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
         'data': {
             'ef_object_data': None,
             'smart_policy': None,
-            'file_specs': None
+            'file_specs': None,
+            'certificate': {'request': False,
+                            'cert_id': None,}
         }
     }
 

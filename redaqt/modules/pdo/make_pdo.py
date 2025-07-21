@@ -10,103 +10,219 @@ Date: July 2025
 Description: PDO Generator
 """
 
-import inspect
-import traceback
-from typing import Optional
+import os
+import uuid
+from typing import Optional, Tuple
+
+from redaqt.modules.lib.file_check import validate_file_exists
+from redaqt.modules.lib.generate_iv import generate_iv
+from redaqt.modules.lib.hash_sha_library import hash_sha512, hash_file_sha512
+from redaqt.modules.lib.encrypt_aes256cbc import encrypt_object_aes256cbc, encrypt_file_aes256cbc
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from pypdf import PdfReader, PdfWriter
 
+ERROR_FILE_NOT_FOUND = "File does not exist"
+ERROR_PERMISSION = "Permission denied"
+ERROR_OS_ACCESS_DENIED = f"OS error writing file to system"
+ERROR_UNEXPECTED = "Unexpected error was encountered"
 
-def create_pdo_base(sys_config, message) -> tuple[bool, str]:
-    """ Generate the base PDO to save Ephemeral metadata, encrypted policy, DaVinci certificate,
-        and encrypted data object.
+
+def protected_document_maker(unencrypted_smart_policy_block: dict,
+                             incoming_encrypt,
+                             file_data: dict,
+                             user_data) -> tuple[bool, Optional[str]]:
+
+    """ Set up the PDO generator
         *** Note; The Protected Document Object utilizes a PDF format.
 
         Args:
-            sys_config: class -- system and application configuration settings set at runtime
-            message: class -- filename and directory for file - provided from Gateway
+            unencrypted_smart_policy_block: dict -- unencrypted smart policy block
+            incoming_encrypt: class -- incoming Efemeral metadata and crypto key
+            file_data: dict -- file and data for protection
+            user_data: class -- system and user data
 
         Returns:
             success: bool -- False (an error was encountered) or True (no error encountered)
-            filename: str -- PDO filename
+            error_msg: str | None -- error message or pass None if no error encountered
+        """
+
+    # Validate file exists and can be accessed
+    success: bool
+    error_msg: Optional[str | None]
+
+    success, error_msg = validate_file_exists(file_data["key"])
+
+    if not success:
+        return False, error_msg
+
+    # Create base Protected Data Object (PDO)
+    success, pdo_filename, error_msg = create_pdo_base(file_data, user_data)
+
+    if not success:
+        return False, error_msg
+
+    # Generate initialization vector
+    cipher = (f"{user_data.crypto_config.encryption_algorithm}"
+              f"{user_data.crypto_config.encryption_key_length}"
+              f"{user_data.crypto_config.encryption_mode}")
+    init_vector = generate_iv(cipher)
+
+    success, davinci_certificate, error_msg = encrypt_object_aes256cbc(init_vector,
+                                                                     incoming_encrypt.data.crypto_key,
+                                                                     str(incoming_encrypt.data.certificate))
+    if not success:
+        return False, error_msg
+
+    # Update Certificate Fingerprint in unencrypted smart policy block
+    unencrypted_smart_policy_block['certificate_fingerprint'] = hash_sha512(davinci_certificate)
+
+    # Create audit note
+    audit_data = {
+        'id': str(uuid.uuid4()),
+        'account_id': user_data.account_id,
+        'user_fname': user_data.user_fname,
+        'user_lname': user_data.user_lname,
+        'user_alias': user_data.user_alias,
+        'grant_token': user_data.grant_token,
+        'grant_token_expiration': user_data.grant_token_expiration,
+        'datetime': file_data['date_protected'],
+        'file': file_data['key'],
+    }
+
+    # Encrypt the audit data to protect it from malicious modification
+    success, audit_cipher_text, error_msg = encrypt_object_aes256cbc(init_vector,
+                                                               incoming_encrypt.data.crypto_key,
+                                                               audit_data)
+    if not success:
+        return False, error_msg
+
+    # Update Audit Fingerprint in unencrypted smart policy block
+    unencrypted_smart_policy_block['audit_fingerprint'] = hash_sha512(audit_cipher_text)
+
+    # Encrypt the file/information and save it as a temporary file
+    success, encrypted_file_path, error_msg = encrypt_file_aes256cbc(init_vector,
+                                                               incoming_encrypt.data.crypto_key,
+                                                               file_data['key'])
+    if not success:
+        return False, error_msg
+
+    # Update PDO Fingerprint in unencrypted smart policy block
+    unencrypted_smart_policy_block['pdo_fingerprint'] = hash_file_sha512(encrypted_file_path)
+
+    # Encrypt the Smart Policy
+    success, encrypted_smart_policy, error_msg = encrypt_object_aes256cbc(init_vector,
+                                                                     incoming_encrypt.data.crypto_key,
+                                                                     unencrypted_smart_policy_block)
+    if not success:
+        return False, error_msg
+
+    # Smart Policy fingerprint
+    smart_policy_signature = hash_sha512(encrypted_smart_policy)
+
+    # Write the metadata to the PDO
+    success, error_msg = write_metadata(pdo_filename,
+                             init_vector,
+                             encrypted_smart_policy,
+                             smart_policy_signature,
+                             user_data,
+                             incoming_encrypt,
+                             davinci_certificate)
+
+    if not success:
+        return False, error_msg
+
+    # Complete the PDO and save the encrypted file data into the PDO
+    success, error_msg = complete_pdo(pdo_filename, encrypted_file_path)
+
+    return success, error_msg
+
+
+def create_pdo_base(file_data, user_data) -> Tuple[bool, Optional[str], Optional[str]]:
+    """ Create the base Protected Data Object
+
+        Args:
+            file_data: dict -- file and data for protection
+            user_data: class -- system and user data
+
+        Returns:
+            success: bool -- False (an error was encountered) or True (no error encountered)
+            filename: str -- base PDO file name
+            error_msg: str -- error message
 
     """
 
-    def handle_error(err, file_name, code: int, msg: str) -> None:
-        pass
-
-    product_string: str = (f"Protected by {sys_config.product.name} "+
-                           f"{sys_config.product.service} "+
-                           f"{sys_config.product.version}")
-    filename: str = (message.get_file_dir + message.get_file_name + '.'+sys_config.product.extension)
-
-    # Create a canvas object
-    c = canvas.Canvas(filename, pagesize=letter)
-
-    # Set font and size
-    font_name = "Helvetica"
-    font_size = 12
-    c.setFont(font_name, font_size)
-
-    # Calculate the width and height of the page
-    width, height = letter
-
-    # Calculate the width and height of the text
-    text_width = c.stringWidth(product_string, font_name, font_size)
-    text_height = font_size  # For a single line of text, height is approximately the font size
-
-    # Calculate the position to center the text
-    x_position = (width - text_width) / 2
-    y_position = (height - text_height) / 2
-
-    # Draw the text on the canvas
-    c.drawString(x_position, y_position, product_string)
-
-    # Save the PDO base to file storage
     try:
+        product_string = f"Protected by {user_data.product.name} {user_data.product.version}"
+
+        # Build full filename path
+        output_dir = file_data['file_path']
+        if not os.path.isdir(output_dir):
+            return False, None, f"Directory does not exist: {output_dir}"
+        if not os.access(output_dir, os.W_OK):
+            return False, None, f"Directory is not writable: {output_dir}"
+
+        filename = os.path.join(
+            output_dir,
+            file_data['filename'] + '.' +
+            file_data['filename_extension'] + '.' +
+            user_data.product.extension
+        )
+
+        # Create PDF canvas
+        c = canvas.Canvas(str(filename), pagesize=letter)
+
+        font_name = "Helvetica"
+        font_size = 12
+        c.setFont(font_name, font_size)
+
+        width, height = letter
+        text_width = c.stringWidth(product_string, font_name, font_size)
+        text_height = font_size
+
+        x_position = (width - text_width) / 2
+        y_position = (height - text_height) / 2
+
+        c.drawString(x_position, y_position, product_string)
+
         c.save()
+        return True, str(filename), None
 
-    except FileNotFoundError as e:
-        handle_error(e, filename, 51, "File not found")
-        return False, filename
-
-    except PermissionError as e:
-        handle_error(e, filename, 51, "Permission denied")
-        return False, filename
-
-    except Exception as e:
-        handle_error(e, filename, 51, "Unexpected error when writing metadata to PDO")
-        return False, filename
-
-    return True, filename
+    except PermissionError:
+        return False, None, ERROR_PERMISSION
+    except OSError:
+        return False, None, ERROR_OS_ACCESS_DENIED
+    except Exception(BaseException):
+        return False, None, ERROR_UNEXPECTED
 
 
 def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
-                   smart_policy_block_signature_hash: str, metadata) -> bool:
+                   smart_policy_block_signature_hash: str, user_data, incoming_encrypt,
+                   davinci_cert) -> Tuple[bool, Optional[str]]:
     """ Build the metadata and embed into the PDO
 
         Args:
-            log_sys_event: class -- debugger and event logger settings set at runtime
-            sys_config: class -- system and application configuration settings set at runtime
             filename: str -- contents of request (filename, directory)
             init_vector: str -- initialization vector
             encrypted_sp: bytes -- encrypted smart policy
             smart_policy_block_signature_hash: str -- SHA512 of the smart policy block signature, or None if an error occurred
-            metadata: class -- metadata provided by the MOS
+            user_data: class -- user data settings
+            incoming_encrypt: dict -- incoming encrypted data
+            davinci_cert: str -- DaVinci certificate
 
         Returns:
             success: bool -- False (an error was encountered) or True (no error encountered)
+            error_msg: str -- error message
 
     """
 
     # Open the original PDF
     try:
         reader = PdfReader(filename)
-    except Exception as e:
+    except Exception(BaseException):
         #handle_error(e, filename, 53, "Failed to read PDO")
-        return False
+        return False, ERROR_PERMISSION
 
     writer = PdfWriter()
 
@@ -149,51 +265,40 @@ def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
         with open(filename, "wb") as file:
             writer.write(file)
 
-    except FileNotFoundError as e:
-        #handle_error(e, filename, 59, "File not found")
-        return False
+    except FileNotFoundError:
+        return False, ERROR_FILE_NOT_FOUND
+    except PermissionError:
+        return False, ERROR_PERMISSION
+    except Exception(BaseException):
+        return False, ERROR_UNEXPECTED
 
-    except PermissionError as e:
-        #handle_error(e, filename, 59, "Permission denied")
-        return False
-
-    except Exception as e:
-        #handle_error(e, filename, 59, "Unexpected error when writing metadata to PDO")
-        return False
-
-    return True
+    return True, None
 
 
-def complete_pdo(log_sys_event, pdo_filename: str, enc_data_filename) -> bool:
-    """ Embed encrypted file and smart policy block into the PDO
+def complete_pdo(pdo_filename: str, enc_data_filename) -> Tuple[bool, str | None]:
+    """ Embed encrypted data into the PDO
 
         Args:
-            log_sys_event: class -- debugger and event logger settings set at runtime
             pdo_filename: str -- (filename, directory) of the PDO file
             enc_data_filename: list -- (filename, directory) of the encrypted original data file
 
         Returns:
             success: bool -- False (an error was encountered) or True (no error encountered)
+            error_msg: str -- error message
 
     """
 
     # Open the PDO
     try:
-        # Open the PDO file
         reader = PdfReader(pdo_filename)
-    except FileNotFoundError as e:
-        #handle_error(e, pdo_filename, 53, "PDO file not found")
-        return False
-
-    except PermissionError as e:
-        #handle_error(e, pdo_filename, 53, "Permission denied")
-        return False
-
-    except Exception as e:
-        #handle_error(e, pdo_filename, 53, "Failed to read PDO")
-        return False
+    except FileNotFoundError:
+        return False, ERROR_FILE_NOT_FOUND
+    except (PermissionError, Exception):
+        return False, ERROR_PERMISSION
 
     writer = PdfWriter()
+
+    # Add new page into PDO Container for the encrypted file data
     for page in reader.pages:  # Add all pages into the reader
         writer.add_page(page)
 
@@ -203,25 +308,25 @@ def complete_pdo(log_sys_event, pdo_filename: str, enc_data_filename) -> bool:
     writer.append_pages_from_reader(reader)
 
     try:
-        # Write the Smart Policy data block to the PDO file
+        # Write the encrypted data from the temporay file to the PDO file
         with open(enc_data_filename, "rb") as sp_file:
             writer.add_attachment(enc_data_filename, sp_file.read())
         with open(pdo_filename, "wb") as file:
             writer.write(file)
 
-    except FileNotFoundError as e:
-        #handle_error(e, enc_data_filename, 53, "Smart policy file not found")
-        return False
+    except FileNotFoundError:
+        return False, ERROR_FILE_NOT_FOUND
+    except (PermissionError, Exception):
+        return False, ERROR_PERMISSION
 
-    except PermissionError as e:
-        #handle_error(e, enc_data_filename, 53, "Permission denied")
-        return False
+    # Attempt to remove the temporary encrypted file
+    try:
+        os.remove(enc_data_filename)
+    except Exception(BaseException):
+        # The temp file cannot be removed — not critical
+        pass
 
-    except Exception as e:
-        #handle_error(e, enc_data_filename, 53, "Failed to read Smart Policy bloc")
-        return False
-
-    return True
+    return True, None
 
 
 """
@@ -247,23 +352,5 @@ Notes: METADATA FIELDS FOR PDO
     "/IV": init_vector                                                      # Encryptor
     "/Signature": smart_policy_block_signature_hash                         # Encryptor
  
- 
- 
- "data": {
-    "mos_version": "2.1.0",
-    "protocol": "efemeral",
-    "protocol_version": "1.0.0",
-    "pqc": {
-      "mid": "5c71c4fb7cfd46a0891ec88666c070da",
-      "fid": "224b01d93e8849a5834c88f21c00ca9b",
-      "pq_type": "sphere",
-      "point": {
-        "i": 3.8652538311625495,
-        "j": -3.7647244838243052,
-        "k": -3.5143757738108876,
-        "radius": 8.22050916738762
-      }
-    },
-    "crypto_key": "AjggQFpNXI2TYGliX3umP9Kp+35Sr2fBXYE0WScsLDA="
  
  """

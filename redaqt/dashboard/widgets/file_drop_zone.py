@@ -2,7 +2,7 @@
 
 from pathlib import Path
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QSizePolicy, QApplication
+    QWidget, QVBoxLayout, QLabel, QSizePolicy
 )
 from PySide6.QtCore import Qt, Signal, QEvent
 from PySide6.QtGui import QDragEnterEvent, QDragLeaveEvent, QDropEvent
@@ -11,11 +11,6 @@ from redaqt.theme.context import ThemeContext
 
 
 class FileDropZone(QWidget):
-    """
-    A drag-and-drop area that emits `fileDropped(str)` when the user drops
-    a file or folder. Border and text color adapt to the current theme,
-    and on drag-hover it turns accent-color with a 4px border.
-    """
     fileDropped = Signal(str)
 
     def __init__(self, theme_context: ThemeContext, parent=None):
@@ -30,7 +25,6 @@ class FileDropZone(QWidget):
         self._setup_ui()
         self._update_style(hover=False)
 
-        # Allow us to catch events if stacked under a layout
         if parent:
             parent.setAcceptDrops(True)
             parent.installEventFilter(self)
@@ -85,7 +79,6 @@ class FileDropZone(QWidget):
             path_str = urls[0].toLocalFile()
             p = Path(path_str)
 
-            # Determine file(s)
             if p.is_dir():
                 files = [str(child) for child in p.iterdir() if child.is_file()]
             else:
@@ -93,12 +86,19 @@ class FileDropZone(QWidget):
 
             if files:
                 self.fileDropped.emit(files[0])
-                if self.parent() and hasattr(self.parent(), "window"):
-                    main_window = self.window()
-                    if hasattr(main_window, "on_item_selected") and hasattr(main_window, "protection_page"):
-                        if p.is_dir() or (p.is_file() and p.suffix.lower() != ".epf"):
+
+                if p.is_file() and p.suffix.lower() == ".epf":
+                    if self.parent() and hasattr(self.parent(), "window"):
+                        main_window = self.window()
+                        if hasattr(main_window, "on_item_selected") and hasattr(main_window, "access_page"):
+                            main_window.on_item_selected("Access Flow")
+                            main_window.access_page.process_protected_document(str(p))
+                else:
+                    if self.parent() and hasattr(self.parent(), "window"):
+                        main_window = self.window()
+                        if hasattr(main_window, "on_item_selected") and hasattr(main_window, "protection_page"):
                             main_window.on_item_selected("Protection Flow")
-                            main_window.protection_page.show_for_paths(files)  # pass list of files
+                            main_window.protection_page.show_for_paths(files)
 
         event.acceptProposedAction()
         self._update_style(hover=False)

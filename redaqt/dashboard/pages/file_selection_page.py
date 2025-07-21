@@ -1,12 +1,16 @@
 # redaqt/dashboard/pages/file_selection_page.py
 
+import os
+import json
 from pathlib import Path
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
 from PySide6.QtCore    import Qt
 
 from redaqt.dashboard.widgets.file_drop_zone     import FileDropZone
-from redaqt.dashboard.views.recent_cards_view import RecentCardsView
+from redaqt.dashboard.views.recent_cards_view    import RecentCardsView
 from redaqt.theme.context                        import ThemeContext
+
+RECENTLY_OPENED_FILE = os.path.join("data", "recently_opened.json")
 
 
 class FileSelectionPage(QWidget):
@@ -65,3 +69,20 @@ class FileSelectionPage(QWidget):
 
         # Recent cards
         self.cards_view.update_theme(self.theme)
+
+    def showEvent(self, event):
+        """Refresh recent files when this page becomes visible."""
+        super().showEvent(event)
+        self.refresh_recent_cards()
+
+    def refresh_recent_cards(self):
+        """Reload recent files from JSON and update RecentCardsView."""
+        try:
+            if os.path.exists(RECENTLY_OPENED_FILE):
+                with open(RECENTLY_OPENED_FILE, "r") as f:
+                    recent_data = json.load(f)
+            else:
+                recent_data = []
+            self.cards_view.load_data(recent_data)
+        except Exception:
+            self.cards_view.load_data([])  # fallback to empty

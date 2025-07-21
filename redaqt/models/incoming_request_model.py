@@ -12,7 +12,7 @@ Description: model for the incoming reply to encryption request
 
 from __future__ import annotations
 from dataclasses import dataclass
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 
 @dataclass
@@ -58,6 +58,7 @@ class Data:
     protocol: str
     protocol_version: str
     pqc: PQC
+    certificate: Optional[str]
     crypto_key: str
 
     @classmethod
@@ -67,6 +68,7 @@ class Data:
             protocol=data["protocol"],
             protocol_version=data["protocol_version"],
             pqc=PQC.from_dict(data["pqc"]),
+            certificate=data.get("certificate"),  # Defaults to None if missing
             crypto_key=data["crypto_key"],
         )
 

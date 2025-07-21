@@ -1,10 +1,13 @@
 # redaqt/dashboard/pages/protection_flow_page.py
 
 import os
+import json
 from datetime import datetime
+from typing import Optional
+from tempfile import NamedTemporaryFile
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QApplication, QMessageBox
 )
 from PySide6.QtCore import Qt
 
@@ -16,6 +19,17 @@ from redaqt.ui.button import RedaQtButton
 from redaqt.theme.context import ThemeContext
 from redaqt.modules.api_request.call_for_encrypt import request_key
 from redaqt.modules.lib.random_string_generator import get_string_256
+from redaqt.modules.pdo import protected_document_maker
+from redaqt.models.smart_policy_block import (SmartPolicyBlock,
+                                              PolicyItem,
+                                              PolicyForm,
+                                              Services,
+                                              Receipt,
+                                              ReceiptTiming)
+
+LENGTH_PIN = 6
+RECENTLY_OPENED_FILE = os.path.join("data", "recently_opened.json")
+MAX_RECENT_ITEMS = 21
 
 
 class ProtectionFlowPage(QWidget):
@@ -27,6 +41,7 @@ class ProtectionFlowPage(QWidget):
         self.colors = theme_context.colors
         self.account_type = account_type
         self.current_paths: list[str] = []
+        self.smart_policy_block: Optional[SmartPolicyBlock] = None
 
         self.selected_user_alias: str | None = None  # Store alias returned from ContactsPopup
 
@@ -112,7 +127,6 @@ class ProtectionFlowPage(QWidget):
             print("[DEBUG] No UserData found on main window")
             return
 
-        # Capture alias set from ContactsPopup (if available)
         if hasattr(main_win, "selected_user_alias"):
             self.selected_user_alias = main_win.selected_user_alias
 
@@ -121,12 +135,25 @@ class ProtectionFlowPage(QWidget):
         passphrase = self.policy_widget.get_passphrase()
         receipt_info = self.receipt_widget.get_values()
 
-        print(f"[DEBUG] chosen smart_policy = {chosen_policy}")
-        print(f"[DEBUG] datetime restriction = {policy_datetime}")
-        print(f"[DEBUG] passphrase = {passphrase}")
-        print(f"[DEBUG] receipt = {receipt_info}")
-        print(f"[DEBUG] selected user alias = {self.selected_user_alias}")  # ✅ Shows alias from ContactsPopup
-        print(f"[DEBUG] User Data = {main_win.user_data.product.version}")
+        self.receipt_block = self.create_receipt_block_dict(receipt_info, 'Message', main_win.user_data)
+
+        condition = policy_datetime or passphrase or self.selected_user_alias or None
+        self.policy_block = self.create_policy_block_dict(chosen_policy, condition,
+                                                          'RedaQt', self.selected_user_alias)
+
+        unencrypted_smart_policy_block = {
+            "id": get_string_256(),
+            "date_time": str(datetime.now().isoformat()),
+            "service": {
+                "policy_engine": self.create_service_dict("pe", "2.0.1"),
+                "comms_manager": self.create_service_dict("cm", "2.0.1")
+            },
+            "policy": [self.policy_block],
+            "receipt": self.receipt_block,
+            "certificate_fingerprint": None,
+            "pdo_fingerprint": None,
+            "audit_fingerprint": None
+        }
 
         for full in self.current_paths:
             dirpath, fname = os.path.split(full)
@@ -141,13 +168,59 @@ class ProtectionFlowPage(QWidget):
             }
 
             is_error, msg, incoming_encrypt = request_key(main_win.user_data)
-            print(f"[DEBUG] Incoming Encrypt = {incoming_encrypt.data}")
 
             if is_error:
                 print(f"[DEBUG] Request key failed: {msg}")
+                self._show_error_message(msg)
                 return
 
-            # Here you'd embed smart policy data into a document or metadata
+            is_success, error_message = protected_document_maker(
+                unencrypted_smart_policy_block,
+                incoming_encrypt,
+                recently_opened,
+                main_win.user_data
+            )
+
+            if is_success:
+                recently_opened["key"] = f"{full}.{main_win.user_data.product.extension}"
+                self._update_recently_opened_json(recently_opened)
+            else:
+                self._show_error_message(error_message)
+
+        # Return to FileSelectionPage after processing
+        self._on_cancel()  # Reset internal UI state
+
+        if hasattr(self.parent(), "setCurrentIndex"):
+            self.parent().setCurrentIndex(0)  # Assumes FileSelectionPage is index 0
+
+
+    def _update_recently_opened_json(self, new_entry: dict):
+        try:
+            if os.path.exists(RECENTLY_OPENED_FILE):
+                with open(RECENTLY_OPENED_FILE, "r") as f:
+                    data = json.load(f)
+            else:
+                data = []
+
+            data = [d for d in data if d["key"] != new_entry["key"]]
+            data.insert(0, new_entry)
+            data = data[:MAX_RECENT_ITEMS]
+
+            with NamedTemporaryFile("w", delete=False, dir=os.path.dirname(RECENTLY_OPENED_FILE)) as tf:
+                json.dump(data, tf, indent=2)
+                temp_path = tf.name
+            os.replace(temp_path, RECENTLY_OPENED_FILE)
+
+        except Exception(BaseException):
+            pass    # No harm if the recently open file cannot be updated
+
+    def _show_error_message(self, message: str):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle("Protection Error")
+        box.setText(message)
+        box.setStandardButtons(QMessageBox.Close)
+        box.exec()
 
     def update_theme(self, ctx: ThemeContext):
         self.theme_context = ctx
@@ -161,31 +234,79 @@ class ProtectionFlowPage(QWidget):
         if hasattr(self.receipt_widget, "update_theme"):
             self.receipt_widget.update_theme(ctx)
 
-    def create_smart_policy_block(self):
-        unencrypted_policy: dict = {
-            'id': get_string_256(),
-            'date_time': str(datetime.now()),
-            'service': {
-                'policy': {'type': 'pe', 'version': '2.1.0'},
-                'comms': {'type': 'cm', 'version': '2.1.0'},
-            },
-            'policy': [
-                {
-                    'protocol': 'no_policy',
-                    'resource': None,
-                    'target': None,
-                    'auto': False,
-                    'form': {'method': None, 'length': 0},
-                    'action': None,
-                    'condition': None
-                }
-            ],
-            'receipt': {
-                'receipt_timing': {'on_request': False, 'on_delivery': False},
-                'resource': None,
-                'service': None,
-                'target': None,
-            }
-        }
+    @staticmethod
+    def create_policy_block_dict(chosen_policy: str, condition: Optional[str],
+                                 resource: str, target_alias: Optional[str]) -> dict:
 
-        return unencrypted_policy
+        def create_policy_form_dict(mfa_method: Optional[str], pin_len: int) -> dict:
+            policy_form = PolicyForm(method=mfa_method, length=pin_len)
+            return policy_form.__dict__
+
+        policy = PolicyItem(
+            protocol=chosen_policy,
+            condition=condition,
+            form=create_policy_form_dict(None, 0)
+        )
+
+        match chosen_policy:
+            case "no_policy":
+                policy.auto = True
+            case "lock_to_user":
+                policy.resource = resource
+                policy.target = [target_alias] if target_alias else []
+                policy.auto = True
+                policy.action = "Equal"
+            case "do_not_open_before":
+                policy.auto = True
+                policy.action = "Greater"
+            case "do_not_open_after":
+                policy.auto = True
+                policy.action = "Less"
+            case "open_with_keyword":
+                policy.action = "Equal"
+            case "open_with_pin":
+                policy.form = create_policy_form_dict("PIN", LENGTH_PIN)
+                policy.action = "Equal"
+            case "lock_to_device":
+                pass  # Reserved
+
+        return policy.__dict__
+
+    @staticmethod
+    def create_receipt_block_dict(receipt_settings: dict, resource: Optional[str], user_data) -> dict:
+        receipt = Receipt(receipt_timing=receipt_settings)
+
+        if receipt_settings["on_request"] or receipt_settings["on_delivery"]:
+            match resource:
+                case None:
+                    receipt.resource = None
+                    receipt.service = None
+                    receipt.target = []
+                case "Message":
+                    receipt.resource = resource
+                    receipt.service = 'RedaQt'
+                    receipt.target = [user_data.user_alias]
+                case "Email":
+                    receipt.resource = resource
+                    receipt.service = 'Email'
+                    receipt.target = [user_data.user_email]
+                case "SMS":
+                    receipt.resource = resource
+                    receipt.service = 'SMS'
+                    receipt.target = []
+                case "Device":
+                    receipt.resource = resource
+                    receipt.service = 'Device'
+                    receipt.target = []
+
+        return receipt.__dict__
+
+    @staticmethod
+    def create_receipt_service_dict(on_request: bool, on_delivery: bool) -> dict:
+        receipt_service_timing = ReceiptTiming(on_request=on_request, on_delivery=on_delivery)
+        return receipt_service_timing.__dict__
+
+    @staticmethod
+    def create_service_dict(service_type: str, service_version: str) -> dict:
+        service_setting = Services(type=service_type, version=service_version)
+        return service_setting.__dict__

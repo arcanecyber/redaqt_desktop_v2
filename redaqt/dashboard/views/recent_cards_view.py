@@ -12,8 +12,7 @@ from redaqt.dashboard.widgets.card_recent import CardRecent
 class RecentCardsView(QScrollArea):
     """
     A scrollable grid of CardRecent widgets.
-    Reads from data/recently_opened.json (either a list or single object)
-    and lays out up to 20 items in 3 columns, transparent container.
+    Reads from data/recently_opened.json and lays out up to 21 items in 3 columns.
     """
 
     def __init__(self, *, assets_dir: Path, parent=None):
@@ -21,21 +20,18 @@ class RecentCardsView(QScrollArea):
         self.assets_dir = Path(assets_dir)
         self.theme      = QApplication.instance().theme.lower()
 
-        # container itself is fully transparent
         self.setStyleSheet("border: none; background: transparent;")
         self.setWidgetResizable(True)
 
         self._build_container()
         self._populate_recents()
-        # no frosted or hover on container, so no additional styling here
 
         self.setWidget(self.container)
-        self.setFixedHeight(300)
+        self.setFixedHeight(300)  # You may adjust this if needed
 
     def _build_container(self):
         self.container = QWidget()
         self.container.setAttribute(Qt.WA_StyledBackground, True)
-        # keep container transparent
         self.container.setStyleSheet("background: transparent; border: none;")
 
         self.grid = QGridLayout(self.container)
@@ -44,11 +40,7 @@ class RecentCardsView(QScrollArea):
         self.grid.setAlignment(Qt.AlignTop | Qt.AlignLeft)
 
     def _populate_recents(self):
-        # clear out old cards
-        for i in reversed(range(self.grid.count())):
-            w = self.grid.itemAt(i).widget()
-            if w:
-                w.setParent(None)
+        self.clear()
 
         json_path = Path("data") / "recently_opened.json"
         if not json_path.exists():
@@ -56,32 +48,49 @@ class RecentCardsView(QScrollArea):
 
         try:
             raw = json.loads(json_path.read_text(encoding="utf-8"))
-        except Exception:
+        except Exception(BaseException):
             return
 
-        if isinstance(raw, dict):
-            entries = [raw]
-        elif isinstance(raw, list):
-            entries = raw
-        else:
-            return
+        entries = [raw] if isinstance(raw, dict) else raw if isinstance(raw, list) else []
 
-        for idx, entry in enumerate(entries[:20]):
+        for idx, entry in enumerate(entries[:21]):
             row, col = divmod(idx, 3)
-            card = CardRecent(
-                filename           = entry.get("filename", ""),
-                filename_extension = entry.get("filename_extension", ""),
-                file_path          = entry.get("file_path", ""),
-                date_protected     = entry.get("date_protected", ""),
-                assets_dir         = self.assets_dir,
-                parent             = self.container
-            )
+            card = self._create_card(entry)
             self.grid.addWidget(card, row, col)
 
     def update_theme(self, theme: str):
         self.theme = theme.lower()
-        # the container remains transparent; only cards themselves need restyling
         for i in range(self.grid.count()):
             w = self.grid.itemAt(i).widget()
             if hasattr(w, "update_theme"):
                 w.update_theme(self.theme)
+
+    def load_data(self, recent_data: list[dict]):
+        self.clear()
+
+        for index, entry in enumerate(recent_data[:21]):
+            row = index // 3
+            col = index % 3
+            card = self._create_card(entry)
+            self.grid.addWidget(card, row, col)
+
+    def _create_card(self, entry: dict):
+        card = CardRecent(
+            filename=entry.get("filename", ""),
+            filename_extension=entry.get("filename_extension", ""),
+            file_path=entry.get("file_path", ""),
+            date_protected=entry.get("date_protected", ""),
+            key=entry.get("key", ""),
+            assets_dir=self.assets_dir,
+            parent=self.container
+        )
+        card.setMinimumWidth(220)
+        card.setMaximumWidth(220)
+        card.update_theme(self.theme)
+        return card
+
+    def clear(self):
+        while self.grid.count():
+            item = self.grid.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
