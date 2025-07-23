@@ -1,9 +1,10 @@
 # redaqt/dashboard/pages/access_flow_page.py
 
 from pathlib import Path
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QApplication
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QApplication, QMessageBox
 from PySide6.QtCore import Qt
 
+from redaqt.models.account import UserData
 from redaqt.theme.context import ThemeContext
 from redaqt.modules.pdo.access_pdo import access_document
 from redaqt.dashboard.widgets.spinner import Spinner
@@ -42,15 +43,30 @@ class AccessFlowPage(QWidget):
 
     def process_protected_document(self, file_path: str):
         """Called when a .epf file is dropped or selected and this page is shown."""
+        main_win = self.window()
+        if not (hasattr(main_win, "user_data") and isinstance(main_win.user_data, UserData)):
+            print("[DEBUG] No UserData found on main window")
+            return
+
         self.spinner.start()
         QApplication.processEvents()
 
         filename = Path(file_path).name
-        is_success, error_msg = access_document(filename, file_path)
+        is_success, error_msg = access_document(main_win.user_data, filename, file_path)
 
-        #self.spinner.stop()
+        self.spinner.stop()
 
-        if is_success:
-            print(f"[AccessFlowPage] Successfully accessed file: {filename} at {file_path}")
-        else:
-            print(f"[AccessFlowPage] Failed to access file: {filename}. Error: {error_msg}")
+        if not is_success:
+            self._show_error_message(error_msg or "An unknown error occurred while accessing the file.")
+            # Redirect to file_selection_page if available
+            if hasattr(self.parent(), "setCurrentIndex"):
+                self.parent().setCurrentIndex(0)  # Assumes FileSelectionPage is index 0
+
+
+    def _show_error_message(self, message: str):
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Critical)
+        box.setWindowTitle("Access Error")
+        box.setText(message)
+        box.setStandardButtons(QMessageBox.Close)
+        box.exec()

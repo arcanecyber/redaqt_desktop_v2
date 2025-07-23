@@ -1,65 +1,16 @@
 [
   {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/ICD_RedaQt_v2.1_AuthMessaging.docx.epf",
-    "filename": "ICD_RedaQt_v2.1_AuthMessaging",
-    "filename_extension": "docx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/DD_RedaQt_v2.1_WebDatabase.pdf.epf",
-    "filename": "DD_RedaQt_v2.1_WebDatabase",
-    "filename_extension": "pdf",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/ICD_RedaQt_v2.1_RequestForMessaging.docx.epf",
-    "filename": "ICD_RedaQt_v2.1_RequestForMessaging",
-    "filename_extension": "docx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/ICD_RedaQt_v2.1_AuthMessaging.pdf.epf",
-    "filename": "ICD_RedaQt_v2.1_AuthMessaging",
-    "filename_extension": "pdf",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/DD_PDO_v2.1.pptx.epf",
-    "filename": "DD_PDO_v2.1",
-    "filename_extension": "pptx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/RedaQt Desktop_v2.1.pptx.epf",
-    "filename": "RedaQt Desktop_v2.1",
-    "filename_extension": "pptx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/RedaQt Desktop_v2.1-DRAFT.pdf.epf",
-    "filename": "RedaQt Desktop_v2.1-DRAFT",
-    "filename_extension": "pdf",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
-  },
-  {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/RedaQt Work Items.docx.epf",
+    "key": "/Users/Jon/Development/RedaQt/RedaQt Work Items.docx.epf",
     "filename": "RedaQt Work Items",
     "filename_extension": "docx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
+    "file_path": "/Users/Jon/Development/RedaQt/",
+    "date_protected": "2025-07-22 23:08"
   },
   {
-    "key": "/Users/Jon/Development/RedaQt/1-Documents/DD_RedaQt_v2.1_WebDatabase.docx.epf",
-    "filename": "DD_RedaQt_v2.1_WebDatabase",
-    "filename_extension": "docx",
-    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
-    "date_protected": "2025-07-16 21:33"
+    "key": "/Users/Jon/Development/RedaQt/test.txt.epf",
+    "filename": "test",
+    "filename_extension": "txt",
+    "file_path": "/Users/Jon/Development/RedaQt/",
+    "date_protected": "2025-07-21 20:24"
   }
 ]

@@ -10,6 +10,7 @@ __all__ = ["UserData",
            "Data",
            "SmartPolicyBlock",
            "IncomingEncrypt",
+           "IncomingDecrypt",
            "AppConfig",
            ]
 
@@ -19,5 +20,6 @@ from .app_config import AppConfig
 from .defaults import DefaultSettings
 from .metadata_object import Data
 from .smart_policy_block import SmartPolicyBlock
-from .incoming_request_model import IncomingEncrypt
+from .incoming_response_encrypt import IncomingEncrypt
+from .incoming_response_decrypt import IncomingDecrypt
 

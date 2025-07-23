@@ -1,3 +1,15 @@
+"""
+File: /redaqt/modules/api_request/call_for_encrypt.py
+Author: Jonathan Carr
+Arcane Cyber, LLC
+https://arcanecyber.net
+contact@arcanecyber.net
+Copyright 2025 - All rights reserved
+
+Date: July 2025
+Description: Call the Efemeral API to get a crypto key
+"""
+
 from uuid import uuid4
 from typing import Tuple, Optional
 
@@ -13,14 +25,14 @@ from requests.exceptions import (
 
 from redaqt.modules.lib.generate_jwt import create_jwt
 from redaqt.config.apis import ApiConfig
-from redaqt.models.incoming_request_model import IncomingEncrypt
+from redaqt.models.incoming_response_encrypt import IncomingEncrypt
 #from redaqt.modules.lib.hash_sha_library import hash_sha256
 
 ENCODING = 'utf-8'
 DECODING = 'ascii'
 MESSAGE_TYPE = 'request_encrypt'
 TIMEOUT_SECONDS = 5.0
-DEFAULT_API_ENCRYPT = "https://api.redaqt.co/encrypt"
+DEFAULT_API = "https://api.redaqt.co/encrypt"
 
 
 def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
@@ -30,7 +42,7 @@ def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
     secret_key = user_data.api_key
     request_id = str(uuid4())
 
-    url = ApiConfig.get("redaqt", "encrypt", default=DEFAULT_API_ENCRYPT)
+    url = ApiConfig.get("redaqt", "encrypt", default=DEFAULT_API)
 
     # Build the JWT auth token
     jwt_payload = {
