@@ -4,13 +4,27 @@
     "filename": "RedaQt Work Items",
     "filename_extension": "docx",
     "file_path": "/Users/Jon/Development/RedaQt/",
-    "date_protected": "2025-07-22 23:08"
+    "date_protected": "2025-08-01 10:25"
   },
   {
     "key": "/Users/Jon/Development/RedaQt/test.txt.epf",
     "filename": "test",
     "filename_extension": "txt",
     "file_path": "/Users/Jon/Development/RedaQt/",
-    "date_protected": "2025-07-21 20:24"
+    "date_protected": "2025-08-01 08:20"
+  },
+  {
+    "key": "/Users/Jon/Development/RedaQt/1-Documents/DD_PDO_v2.1.pptx.epf",
+    "filename": "DD_PDO_v2.1",
+    "filename_extension": "pptx",
+    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
+    "date_protected": "2025-07-27 13:46"
+  },
+  {
+    "key": "/Users/Jon/Development/RedaQt/1-Documents/DD_RedaQt_v2.1_WebDatabase.docx.epf",
+    "filename": "DD_RedaQt_v2.1_WebDatabase",
+    "filename_extension": "docx",
+    "file_path": "/Users/Jon/Development/RedaQt/1-Documents/",
+    "date_protected": "2025-07-27 13:46"
   }
 ]

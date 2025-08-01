@@ -13,11 +13,12 @@ Description: PDO Generator
 import os
 import uuid
 from typing import Optional, Tuple
+from pathlib import Path
 
 from redaqt.modules.lib.file_check import validate_file_exists
 from redaqt.modules.lib.generate_iv import generate_iv
 from redaqt.modules.lib.hash_sha_library import hash_sha512, hash_file_sha512
-from redaqt.modules.lib.encrypt_aes256cbc import encrypt_object_aes256cbc, encrypt_file_aes256cbc
+from redaqt.modules.lib.encrypt_aes256gcm import encrypt_object_aes256gcm, encrypt_file_aes256gcm
 
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -48,10 +49,10 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
             error_msg: str | None -- error message or pass None if no error encountered
         """
 
-    # Validate file exists and can be accessed
     success: bool
     error_msg: Optional[str | None]
 
+    # Validate file exists and can be accessed
     success, error_msg = validate_file_exists(file_data["key"])
 
     if not success:
@@ -67,11 +68,11 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
     cipher = (f"{user_data.crypto_config.encryption_algorithm}"
               f"{user_data.crypto_config.encryption_key_length}"
               f"{user_data.crypto_config.encryption_mode}")
-    init_vector = generate_iv(cipher)
+    iv_b64, iv_bytes = generate_iv(cipher)
 
-    success, davinci_certificate, error_msg = encrypt_object_aes256cbc(init_vector,
-                                                                     incoming_encrypt.data.crypto_key,
-                                                                     str(incoming_encrypt.data.certificate))
+    success, davinci_certificate, error_msg = encrypt_object_aes256gcm(iv_bytes,
+                                                                       incoming_encrypt.data.crypto_key,
+                                                                       str(incoming_encrypt.data.certificate))
     if not success:
         return False, error_msg
 
@@ -81,20 +82,14 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
     # Create audit note
     audit_data = {
         'id': str(uuid.uuid4()),
-        'account_id': user_data.account_id,
-        'user_fname': user_data.user_fname,
-        'user_lname': user_data.user_lname,
         'user_alias': user_data.user_alias,
-        'grant_token': user_data.grant_token,
-        'grant_token_expiration': user_data.grant_token_expiration,
-        'datetime': file_data['date_protected'],
-        'file': file_data['key'],
+        'datetime': file_data['date_protected']
     }
 
     # Encrypt the audit data to protect it from malicious modification
-    success, audit_cipher_text, error_msg = encrypt_object_aes256cbc(init_vector,
-                                                               incoming_encrypt.data.crypto_key,
-                                                               audit_data)
+    success, audit_cipher_text, error_msg = encrypt_object_aes256gcm(iv_bytes,
+                                                                     incoming_encrypt.data.crypto_key,
+                                                                     audit_data)
     if not success:
         return False, error_msg
 
@@ -102,9 +97,9 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
     unencrypted_smart_policy_block['audit_fingerprint'] = hash_sha512(audit_cipher_text)
 
     # Encrypt the file/information and save it as a temporary file
-    success, encrypted_file_path, error_msg = encrypt_file_aes256cbc(init_vector,
-                                                               incoming_encrypt.data.crypto_key,
-                                                               file_data['key'])
+    success, encrypted_file_path, error_msg = encrypt_file_aes256gcm(iv_bytes,
+                                                                     incoming_encrypt.data.crypto_key,
+                                                                     file_data['key'])
     if not success:
         return False, error_msg
 
@@ -112,20 +107,20 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
     unencrypted_smart_policy_block['pdo_fingerprint'] = hash_file_sha512(encrypted_file_path)
 
     # Encrypt the Smart Policy
-    success, encrypted_smart_policy, error_msg = encrypt_object_aes256cbc(init_vector,
-                                                                     incoming_encrypt.data.crypto_key,
-                                                                     unencrypted_smart_policy_block)
+    success, encrypted_smart_policy, error_msg = encrypt_object_aes256gcm(iv_bytes,
+                                                                          incoming_encrypt.data.crypto_key,
+                                                                          unencrypted_smart_policy_block)
     if not success:
         return False, error_msg
 
-    # Smart Policy fingerprint
-    smart_policy_signature = hash_sha512(encrypted_smart_policy)
+   # Smart Policy fingerprint
+    smart_policy_id_signature = hash_sha512(unencrypted_smart_policy_block['id'])
 
     # Write the metadata to the PDO
     success, error_msg = write_metadata(pdo_filename,
-                             init_vector,
+                             iv_b64,
                              encrypted_smart_policy,
-                             smart_policy_signature,
+                             smart_policy_id_signature,
                              user_data,
                              incoming_encrypt,
                              davinci_certificate)
@@ -198,7 +193,7 @@ def create_pdo_base(file_data, user_data) -> Tuple[bool, Optional[str], Optional
 
 
 def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
-                   smart_policy_block_signature_hash: str, user_data, incoming_encrypt,
+                   smart_policy_id_hash: str, user_data, incoming_encrypt,
                    davinci_cert) -> Tuple[bool, Optional[str]]:
     """ Build the metadata and embed into the PDO
 
@@ -206,7 +201,7 @@ def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
             filename: str -- contents of request (filename, directory)
             init_vector: str -- initialization vector
             encrypted_sp: bytes -- encrypted smart policy
-            smart_policy_block_signature_hash: str -- SHA512 of the smart policy block signature, or None if an error occurred
+            smart_policy_id_hash: str -- SHA512 of the smart policy block id
             user_data: class -- user data settings
             incoming_encrypt: dict -- incoming encrypted data
             davinci_cert: str -- DaVinci certificate
@@ -252,7 +247,7 @@ def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
             "/PQC_k": incoming_encrypt.data.pqc.point.k,
             "/PQC_r": incoming_encrypt.data.pqc.point.radius,
             "/IV": init_vector,
-            "/Signature": smart_policy_block_signature_hash,
+            "/Signature": smart_policy_id_hash,
             "/Smart_Policy": encrypted_sp,
             "/DaVinci_Certificate": davinci_cert,
             "/Encrypted_filename": "not_used",
@@ -275,7 +270,7 @@ def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
     return True, None
 
 
-def complete_pdo(pdo_filename: str, enc_data_filename) -> Tuple[bool, str | None]:
+def complete_pdo(pdo_filename: str, enc_data_filename: str) -> Tuple[bool, Optional[str]]:
     """ Embed encrypted data into the PDO
 
         Args:
@@ -288,7 +283,7 @@ def complete_pdo(pdo_filename: str, enc_data_filename) -> Tuple[bool, str | None
 
     """
 
-    # Open the PDO
+    """Embed encrypted data into the PDO."""
     try:
         reader = PdfReader(pdo_filename)
     except FileNotFoundError:
@@ -298,32 +293,30 @@ def complete_pdo(pdo_filename: str, enc_data_filename) -> Tuple[bool, str | None
 
     writer = PdfWriter()
 
-    # Add new page into PDO Container for the encrypted file data
-    for page in reader.pages:  # Add all pages into the reader
-        writer.add_page(page)
-
-    if reader.metadata is not None:  # Read in the metadata to write back into file
+    # Add pages and metadata
+    writer.append_pages_from_reader(reader)
+    if reader.metadata:
         writer.add_metadata(reader.metadata)
 
-    writer.append_pages_from_reader(reader)
-
+    # Add encrypted file as attachment (IMPORTANT: use only filename)
     try:
-        # Write the encrypted data from the temporay file to the PDO file
         with open(enc_data_filename, "rb") as sp_file:
-            writer.add_attachment(enc_data_filename, sp_file.read())
-        with open(pdo_filename, "wb") as file:
-            writer.write(file)
+            file_bytes = sp_file.read()
+            filename_only = Path(enc_data_filename).name
+            writer.add_attachment(filename_only, file_bytes)
+
+        with open(pdo_filename, "wb") as output_file:
+            writer.write(output_file)
 
     except FileNotFoundError:
         return False, ERROR_FILE_NOT_FOUND
     except (PermissionError, Exception):
-        return False, ERROR_PERMISSION
+        return False, ERROR_UNEXPECTED
 
-    # Attempt to remove the temporary encrypted file
+    # Clean up temp file (optional)
     try:
         os.remove(enc_data_filename)
-    except Exception(BaseException):
-        # The temp file cannot be removed — not critical
+    except Exception:
         pass
 
     return True, None

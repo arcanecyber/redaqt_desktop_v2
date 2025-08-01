@@ -145,8 +145,8 @@ class ProtectionFlowPage(QWidget):
             "id": get_string_256(),
             "date_time": str(datetime.now().isoformat()),
             "service": {
-                "policy_engine": self.create_service_dict("pe", "2.0.1"),
-                "comms_manager": self.create_service_dict("cm", "2.0.1")
+                "policy_engine": self.create_service_dict("pe", "2.1.0"),
+                "comms_manager": self.create_service_dict("cm", "2.1.0")
             },
             "policy": [self.policy_block],
             "receipt": self.receipt_block,

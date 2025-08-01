@@ -10,19 +10,20 @@ Date: July 2025
 Description: Access the PDO
 """
 
-import os
-import time
 from pathlib import Path
 from pypdf import PdfReader
 from typing import Optional, Tuple
-from redaqt.modules.lib.file_check import validate_file_exists
+from redaqt.modules.lib.file_check import validate_file_exists, append_filename_for_no_overwrite
 from redaqt.modules.api_request.call_for_decrypt import request_key
+from redaqt.modules.pdo.extract_pd_attachment import extract_attachments_from_pdo
+from redaqt.modules.lib.decrypt_aes256gcm import decrypt_file_aes256gcm
 
 ERROR_FILE_NOT_FOUND = "File does not exist"
 ERROR_PERMISSION = "Permission denied"
 ERROR_OS_ACCESS_DENIED = f"OS error writing file to system"
 ERROR_UNEXPECTED = "Unexpected error was encountered"
 ERROR_PROTECTED_DOCUMENT = f"Could not read data from protected document"
+ERROR_NO_CRYPTO_KEY = "No Crypto key was returned by the service"
 
 def access_document(user_data, filename: str, file_path: str) -> tuple[bool, Optional[str]]:
     """ Access the PDO and generate a request to decrypt the file
@@ -52,32 +53,37 @@ def access_document(user_data, filename: str, file_path: str) -> tuple[bool, Opt
     success, error_msg, receive_json = request_key(user_data, metadata)
     if not success:
         return False, error_msg
+    else:
+        # Validate that an encryption key was returned, else, return an error
+        key_str = getattr(receive_json['data'], 'crypto_key', None)
+        if not key_str:
+            return False, ERROR_NO_CRYPTO_KEY
 
-    print(f"[DEBUG] Received data from Efemeral: {type(receive_json)}\n{receive_json}")
+    success, error_msg, temp_filenames = extract_attachments_from_pdo(file_path)
+    if not success:
+        return False, error_msg
+
+    # Decrypt each extracted file
+    for temp_file in temp_filenames:
+        # Create a new non-colliding output filename
+        save_to_filename: Path = append_filename_for_no_overwrite(file_path)
+
+        # Perform decryption
+        success, output_path, decrypt_error = decrypt_file_aes256gcm(key_str, temp_file, save_to_filename)
+        if not success:
+            return False, f"Decryption failed: {decrypt_error}"
+
+        # === Clean up the encrypted temporary file ===
+        cleanup_temp_file(Path(temp_file))
+
+    return True, None
+
 
     """
-    1) Check that PDO exists
-    1A) if PDo exists - extract metadata, smart policy, and certificate data
-    1B) If PDO fails to load - return error
-    
-    2) Send metadata, smart policy and certificate data to Efemeral
-    2A) if valid, receive key
-    2B) if not valid, return error
-    
-    3) If got key, then
-    3A) extract encrypted data to a temp file
-    3B) check directory for file with same name.  If same name exists, then add _(copy YYYY-MM-DD-HHMMSS) to tail
-    3C) decrypt data to file and save to disk
     
     4) Pop-up box showing certificate and asking if file should be opened
     """
 
-    print(f"User Account Data: {user_data}")
-
-    if not success:
-        return False, error_msg
-
-    return True, None
 
 
 def get_pdo_metadata(file_path: str) -> tuple[bool, Optional[str], Optional[dict]]:
@@ -120,3 +126,17 @@ def get_pdo_metadata(file_path: str) -> tuple[bool, Optional[str], Optional[dict
 
     else:
         return False, ERROR_PROTECTED_DOCUMENT, None
+
+
+def cleanup_temp_file(temp_path: Path) -> None:
+    """
+    Safely delete a temporary file if it exists.
+
+    Args:
+        temp_path: Path to the temporary file to remove
+    """
+    try:
+        if temp_path.exists():
+            temp_path.unlink()
+    except Exception:
+        pass

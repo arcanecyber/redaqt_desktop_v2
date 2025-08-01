@@ -12,5 +12,5 @@ product:
 crypto_config:
   encryption_algorithm: aes
   encryption_key_length: 256
-  encryption_mode: cbc
+  encryption_mode: gcm
   hash_algorithm: sha512

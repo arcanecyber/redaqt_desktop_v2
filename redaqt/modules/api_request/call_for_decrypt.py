@@ -53,20 +53,21 @@ def request_key(user_data, metadata: dict) -> Tuple[bool, Optional[str], Optiona
     }
     token = create_jwt(secret_key, jwt_payload)
 
+    # Create the request data payload
+    data: dict = {
+        'ef_object_data': create_ef_object_data(metadata),
+        'smart_policy': create_smart_policy(metadata),
+        'file_specs': create_file_specs(metadata),
+        'certificate': create_certificate(metadata)
+    }
+
     # Create the request payload
     request_json = {
         'message_type': MESSAGE_TYPE,
         'auth': token,
-        'management': { "request_id": request_id },
-        'data': {
-            'ef_object_data': create_ef_object_data(metadata),
-            'smart_policy': create_smart_policy(metadata),
-            'file_specs': create_file_specs(metadata),
-            'certificate': create_certificate(metadata)
-        }
+        'management': {"request_id": request_id},
+        'data': data
     }
-
-    print(f"Request JSON: {json.dumps(request_json, indent=4)}")
 
     headers = {
         'Authorization': f'Bearer {secret_key}',
@@ -112,7 +113,6 @@ def request_key(user_data, metadata: dict) -> Tuple[bool, Optional[str], Optiona
 
     #----- Check service response for errors -----
     if receive_json.error is True:
-        print(f"[DEBUG] {receive_json}")
         return False, receive_json.status_message, None
 
     #----- Validate checksum -----
@@ -123,13 +123,10 @@ def request_key(user_data, metadata: dict) -> Tuple[bool, Optional[str], Optiona
 
 
     #----- Validate request_id is original -----
-    print(f"[DEBUG] A")
     try:
         actual_id = receive_json.management.request_id
-        print(f"[DEBUG] B")
     except (AttributeError, TypeError):
             msg = "An error was encountered processing request"
-            print(f"[DEBUG] C")
             return False, msg, None
 
     if actual_id != request_id:
@@ -140,7 +137,9 @@ def request_key(user_data, metadata: dict) -> Tuple[bool, Optional[str], Optiona
 
 
 def create_ef_object_data(metadata: dict) -> dict:
-
+    """
+    Populate the Efemeral Object Data dict and return it.
+    """
     return {"service": {"type": "mm",
                         "version": metadata["mos_version"]},
             "protocol": {"method": metadata["protocol"],
@@ -155,27 +154,35 @@ def create_ef_object_data(metadata: dict) -> dict:
                               }
             }
 
-def create_smart_policy(metadata: dict) -> dict:
 
+def create_smart_policy(metadata: dict) -> dict:
+    """
+    Populate the smart policy dict and return it.
+    """
     return {"policy_encrypted": metadata["smart_policy"],
-            "protocol": {"encryption_algorithm": metadata["encryption_algorithm"],
-                         "encryption_key_length": int(metadata["encryption_key_length"]),
-                         "encryption_mode": metadata["encryption_mode"],
-                         "iv": metadata["iv"],
-                         "hash_algorithm": metadata["hash_algorithm"],
-                         "signature": metadata["signature"]},
-            "response": {"id": "UUID4",
-                         "date_time": get_timestamp(),
-                         "key": None,
-                         "value": None}
+            "protocol": {
+                "encryption_algorithm": metadata["encryption_algorithm"],
+                "encryption_key_length": int(metadata["encryption_key_length"]),
+                "encryption_mode": metadata["encryption_mode"],
+                "iv": metadata["iv"],
+                "hash_algorithm": metadata["hash_algorithm"],
+                "signature": metadata["signature"]},
+            "response": {
+                "id": "UUID4",
+                "date_time": get_timestamp(),
+                "key": None,
+                "value": None
             }
+        }
+
 
 def create_file_specs(metadata: dict) -> Optional[dict]:
     return None
 
+
 def create_certificate(metadata: dict) -> Optional[dict]:
     return {'request': False,
-            'certificate': metadata["davinci_certificate"],}
+            'cert': metadata["davinci_certificate"],}
 
 
 def get_timestamp() -> str:
