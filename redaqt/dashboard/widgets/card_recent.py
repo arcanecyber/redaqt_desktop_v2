@@ -105,21 +105,19 @@ class CardRecent(QWidget):
         self._apply_style()
 
     def mousePressEvent(self, event: QMouseEvent):
-        # Validate that this is an .epf file based on key
-        if not self.key.lower().endswith(f".{PROTECTED_FILE_EXTENSION}"):
+        p = Path(self.key)
+
+        # Ensure it's an .epf file
+        if not p.is_file() or p.suffix.lower() != f".{PROTECTED_FILE_EXTENSION}":
             print(f"[CardRecent] Skipping: {self.key} is not a .{PROTECTED_FILE_EXTENSION} file.")
             return
 
-        full_filename = f"{self.filename}.{self.filename_extension}.{PROTECTED_FILE_EXTENSION}"
+        # Route to access page just like FileDropZone
+        if self.parent() and hasattr(self.parent(), "window"):
+            main_window = self.window()
+            if hasattr(main_window, "on_item_selected") and hasattr(main_window, "access_page"):
+                main_window.on_item_selected("Access Flow")
+                main_window.access_page.process_protected_document(str(p))
 
-        # Call access logic
-        access_document(full_filename, self.key)
-
-        # Switch to Access Flow page
-        main_window = self.window()
-        if hasattr(main_window, "on_item_selected") and hasattr(main_window, "access_page"):
-            main_window.on_item_selected("Access Flow")
-            main_window.access_page.process_protected_document(self.key)
-
-        self.decryptRequested.emit(self.file_path)
+        self.decryptRequested.emit(str(p))
         super().mousePressEvent(event)

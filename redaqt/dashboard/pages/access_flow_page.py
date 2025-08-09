@@ -51,8 +51,8 @@ class AccessFlowPage(QWidget):
         self.spinner.start()
         QApplication.processEvents()
 
-        filename = Path(file_path).name
-        is_success, error_msg = access_document(main_win.user_data, filename, file_path)
+        is_success, error_msg, davinci_certificate, davinci_certificate_image, decrypted_file_path = (
+            access_document(main_win.user_data, file_path))
 
         self.spinner.stop()
 
@@ -62,6 +62,18 @@ class AccessFlowPage(QWidget):
             if hasattr(self.parent(), "setCurrentIndex"):
                 self.parent().setCurrentIndex(0)  # Assumes FileSelectionPage is index 0
 
+        # Show the certificate dialog popup window
+        if is_success and davinci_certificate is not None:
+            from redaqt.dashboard.dialogs.certificate_dialog import CertificateDialog
+
+            dialog = CertificateDialog(
+                davinci_certificate=davinci_certificate,
+                davinci_certificate_image=davinci_certificate_image,
+                file_path=decrypted_file_path,
+                parent=self
+            )
+            dialog.returnToFileSelection.connect(self._go_to_file_selection_page)
+            dialog.exec()
 
     def _show_error_message(self, message: str):
         box = QMessageBox(self)
@@ -70,3 +82,8 @@ class AccessFlowPage(QWidget):
         box.setText(message)
         box.setStandardButtons(QMessageBox.Close)
         box.exec()
+
+    def _go_to_file_selection_page(self):
+        """Navigates back to the file selection page (index 0)."""
+        if hasattr(self.parent(), "setCurrentIndex"):
+            self.parent().setCurrentIndex(0)

@@ -12,6 +12,7 @@ Description: Call the Efemeral API to get a crypto key
 
 from uuid import uuid4
 from typing import Tuple, Optional
+from datetime import datetime, timedelta
 
 import requests
 from requests.exceptions import (
@@ -23,10 +24,12 @@ from requests.exceptions import (
     RequestException
 )
 
+from PySide6.QtWidgets import QApplication
 from redaqt.modules.lib.generate_jwt import create_jwt
 from redaqt.config.apis import ApiConfig
 from redaqt.models.incoming_response_encrypt import IncomingEncrypt
-#from redaqt.modules.lib.hash_sha_library import hash_sha256
+from redaqt.modules.lib.random_string_generator import generate_random_string
+from redaqt.modules.lib.hash_sha_library import hash_sha256, hash_sha512
 
 ENCODING = 'utf-8'
 DECODING = 'ascii'
@@ -51,6 +54,8 @@ def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
     }
     token = create_jwt(secret_key, jwt_payload)
 
+    add_cert = QApplication.instance().settings_model.certificate.add_certificate
+
     # Create the request payload
     request_json = {
         'message_type': MESSAGE_TYPE,
@@ -60,8 +65,7 @@ def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
             'ef_object_data': None,
             'smart_policy': None,
             'file_specs': None,
-            'certificate': {'request': False,
-                            'cert': None,}
+            'certificate': {'request': add_cert}
         }
     }
 
@@ -132,4 +136,51 @@ def request_key(user_data) -> Tuple[bool, str, Optional[IncomingEncrypt]]:
             f"Request ID mismatch: expected {request_id!r}, got {actual_id!r}"
         )
 
+    receive_json = certificate_filler_function(user_data, receive_json)
+    #print(f"[DEBUG call_for_encrypt] Certificate added to IncomingEncrypt object:\n{receive_json}")
+
     return receive_json.error, receive_json.status_message, receive_json
+
+
+def certificate_filler_function(user_data, incoming_encrypt_obj):
+    """
+    Temporary filler until Efemeral supports certificate generation.
+    Injects fake structured certificate data into IncomingEncrypt object.
+    """
+    private_marker = generate_random_string(2048)
+
+    parent_certificate_id = 'redaqt-2025-08-01-ABCDEF123456'
+    name = user_data.user_alias
+    organization = 'Arcane Cyber'
+    child_certificate_id = f'redaqt-2025-08-02-{generate_random_string(12)}'
+    certificate_type = 'Gold'
+
+    signing_time = datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
+    expires_after = (datetime.utcnow() + timedelta(days=60)).strftime('%Y-%m-%d')
+
+    trace = hash_sha512(
+        f"{child_certificate_id}{private_marker}{signing_time}{expires_after}"
+    )
+
+    certificate_obj = {
+        "child_certificate_id": child_certificate_id,
+        "certificate_type": certificate_type,
+        "trace": trace,
+        "issuer": {
+            "parent_certificate_id": parent_certificate_id,
+            "name": name,
+            "organization": organization,
+            "signing_time": signing_time,
+            "expires_after": expires_after,
+        },
+        "authority": {
+            "issuer_name": "RedaQt",
+            "issuer_email": "fakeemail@redaqt.co",
+            "issuer_uri": "https://ca.redaqt.co/",
+        }
+    }
+
+    # ✅ Modify the dataclass field directly
+    incoming_encrypt_obj.data.certificate = certificate_obj
+
+    return incoming_encrypt_obj

@@ -12,22 +12,32 @@ Description: PDO Generator
 
 import os
 import uuid
+import hashlib
 from typing import Optional, Tuple
 from pathlib import Path
+import io
 
 from redaqt.modules.lib.file_check import validate_file_exists
 from redaqt.modules.lib.generate_iv import generate_iv
 from redaqt.modules.lib.hash_sha_library import hash_sha512, hash_file_sha512
 from redaqt.modules.lib.encrypt_aes256gcm import encrypt_object_aes256gcm, encrypt_file_aes256gcm
+from redaqt.modules.lib.b64_encoder_decoder import encode_dict_to_base64
+from redaqt.modules.certs.encoder_image import encoder_image
 
+from PySide6.QtWidgets import QApplication
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
 from pypdf import PdfReader, PdfWriter
+from PIL import Image
+import numpy as np
 
 ERROR_FILE_NOT_FOUND = "File does not exist"
 ERROR_PERMISSION = "Permission denied"
 ERROR_OS_ACCESS_DENIED = f"OS error writing file to system"
 ERROR_UNEXPECTED = "Unexpected error was encountered"
+
+CERTIFICATE = "certificate.png"
 
 
 def protected_document_maker(unencrypted_smart_policy_block: dict,
@@ -70,14 +80,17 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
               f"{user_data.crypto_config.encryption_mode}")
     iv_b64, iv_bytes = generate_iv(cipher)
 
-    success, davinci_certificate, error_msg = encrypt_object_aes256gcm(iv_bytes,
-                                                                       incoming_encrypt.data.crypto_key,
-                                                                       str(incoming_encrypt.data.certificate))
-    if not success:
-        return False, error_msg
+    certificate_encoded = encode_dict_to_base64(incoming_encrypt.data.certificate)
 
-    # Update Certificate Fingerprint in unencrypted smart policy block
-    unencrypted_smart_policy_block['certificate_fingerprint'] = hash_sha512(davinci_certificate)
+    certificate_image_path = QApplication.instance().settings_model.certificate.location
+
+
+    success, davinci_certificate_image = encoder_image(certificate_encoded, certificate_image_path)
+    if not success:
+        unencrypted_smart_policy_block['certificate_fingerprint'] = hash_sha512(certificate_encoded)
+    else:
+        unencrypted_smart_policy_block['certificate_fingerprint'] = hash_sha512_bytes(davinci_certificate_image.tobytes())
+        certificate_encoded = ""
 
     # Create audit note
     audit_data = {
@@ -116,6 +129,8 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
    # Smart Policy fingerprint
     smart_policy_id_signature = hash_sha512(unencrypted_smart_policy_block['id'])
 
+    embed_davinci_certificate(pdo_filename, davinci_certificate_image)
+
     # Write the metadata to the PDO
     success, error_msg = write_metadata(pdo_filename,
                              iv_b64,
@@ -123,10 +138,12 @@ def protected_document_maker(unencrypted_smart_policy_block: dict,
                              smart_policy_id_signature,
                              user_data,
                              incoming_encrypt,
-                             davinci_certificate)
+                             certificate_encoded)
 
     if not success:
         return False, error_msg
+
+
 
     # Complete the PDO and save the encrypted file data into the PDO
     success, error_msg = complete_pdo(pdo_filename, encrypted_file_path)
@@ -269,6 +286,65 @@ def write_metadata(filename: str, init_vector: str, encrypted_sp: str,
 
     return True, None
 
+def embed_davinci_certificate(pdo_filename: str, image: np.ndarray):
+    """
+    Embeds a numpy image array into an existing PDF without overwriting existing content or metadata.
+
+    The image is centered horizontally and positioned below the existing text.
+
+    Args:
+        pdo_filename: str -- path to the existing PDO PDF
+        image: np.ndarray -- image array to embed
+    """
+
+    # Convert numpy array to PIL Image
+    pil_image = Image.fromarray(image)
+    img_buffer = io.BytesIO()
+    pil_image.save(img_buffer, format="PNG")
+    img_buffer.seek(0)
+
+    # Create a temporary overlay PDF with the image
+    overlay_pdf = io.BytesIO()
+    width, height = letter
+    c = canvas.Canvas(overlay_pdf, pagesize=letter)
+
+    # === Calculate placement ===
+    image_width = 200
+    image_height = 200
+    x_image = (width - image_width) / 2
+    y_text = height / 2  # same as in create_pdo_base
+    y_image = y_text - image_height - 30  # 30 units padding below the text
+
+    # Draw the image
+    img_reader = ImageReader(img_buffer)
+    c.drawImage(img_reader, x=x_image, y=y_image, width=image_width, height=image_height)
+    c.save()
+
+    overlay_pdf.seek(0)
+
+    # Read the existing PDO
+    original_reader = PdfReader(pdo_filename)
+    overlay_reader = PdfReader(overlay_pdf)
+    writer = PdfWriter()
+
+    # Overlay only the first page
+    base_page = original_reader.pages[0]
+    overlay_page = overlay_reader.pages[0]
+    base_page.merge_page(overlay_page)
+    writer.add_page(base_page)
+
+    # Add any remaining pages
+    for page in original_reader.pages[1:]:
+        writer.add_page(page)
+
+    # Preserve metadata
+    if original_reader.metadata:
+        writer.add_metadata(original_reader.metadata)
+
+    # Write back to file
+    with open(pdo_filename, "wb") as f_out:
+        writer.write(f_out)
+
 
 def complete_pdo(pdo_filename: str, enc_data_filename: str) -> Tuple[bool, Optional[str]]:
     """ Embed encrypted data into the PDO
@@ -321,6 +397,11 @@ def complete_pdo(pdo_filename: str, enc_data_filename: str) -> Tuple[bool, Optio
 
     return True, None
 
+
+def hash_sha512_bytes(data: bytes | str) -> str:
+    if isinstance(data, str):
+        data = data.encode('utf-8')  # Encode string to bytes
+    return hashlib.sha512(data).hexdigest()  # Hash the bytes
 
 """
 Notes: METADATA FIELDS FOR PDO

@@ -83,14 +83,14 @@ def main():
 
     try:
         validated = settings_mgr.get_validated_defaults()
-    except Exception(BaseException):
+    except Exception:
         sys.exit(1)
 
     app.settings_model = validated
 
     try:
         app.config_model = settings_mgr.get_validated_config()
-    except Exception(BaseException):
+    except Exception:
         sys.exit(1)
 
     # --- Theme setup ---

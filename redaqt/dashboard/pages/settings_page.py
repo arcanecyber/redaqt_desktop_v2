@@ -2,23 +2,24 @@
 
 from pathlib import Path
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QApplication, QHBoxLayout,
-    QMessageBox
+    QWidget, QVBoxLayout, QApplication, QHBoxLayout, QMessageBox
 )
 from PySide6.QtCore import Qt
 
-from redaqt.dashboard.views.default_mfa_view      import SettingsMFAView
+from redaqt.dashboard.views.default_mfa_view import SettingsMFAView
 from redaqt.dashboard.views.default_appearance_view import DefaultAppearance
 from redaqt.dashboard.views.default_smart_policy_view import DefaultSmartPolicy
-from redaqt.theme.context                        import ThemeContext
-from redaqt.ui.button                            import RedaQtButton
-from redaqt.modules.security.mfa_pin             import encrypt_and_store_auth_key
+from redaqt.dashboard.views.default_certificate_view import DefaultCertificateView
+from redaqt.dashboard.views.default_request_receipt import DefaultRequestReceiptView
+from redaqt.theme.context import ThemeContext
+from redaqt.ui.button import RedaQtButton
+from redaqt.modules.security.mfa_pin import encrypt_and_store_auth_key
 
 
 class SettingsPage(QWidget):
     """
     Main widget shown on the SettingsPage.
-    This includes MFA, appearance, and smart policy settings.
+    This includes MFA, appearance, smart policy, and certificate settings.
     """
     def __init__(self, theme_context: ThemeContext, assets_dir: Path, parent=None):
         super().__init__(parent)
@@ -28,13 +29,13 @@ class SettingsPage(QWidget):
         self.assets_dir = assets_dir
 
         app = QApplication.instance()
-        self.settings_mgr   = app.settings          # SettingsManager
-        self.settings_model = app.settings_model    # DefaultSettings
+        self.settings_mgr = app.settings          # SettingsManager
+        self.settings_model = app.settings_model  # DefaultSettings
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(20)
-        layout.setAlignment(Qt.AlignTop)
+        self.layout = QVBoxLayout(self)
+        self.layout.setContentsMargins(10, 10, 10, 10)
+        self.layout.setSpacing(20)
+        self.layout.setAlignment(Qt.AlignTop)
 
         # Do we have an account on disk?
         account_file = Path("data/account")
@@ -44,9 +45,9 @@ class SettingsPage(QWidget):
         self.mfa_widget = None
         if self.account_exists:
             self.mfa_widget = SettingsMFAView(
-                theme_context, self.assets_dir, self.settings_model.mfa
+                self.theme_context, self.assets_dir, self.settings_model.mfa
             )
-            layout.addWidget(self.mfa_widget, alignment=Qt.AlignTop)
+            self.layout.addWidget(self.mfa_widget, alignment=Qt.AlignTop)
         else:
             # enforce false in defaults
             self.settings_mgr.set_default(
@@ -57,16 +58,30 @@ class SettingsPage(QWidget):
             )
 
         # --- Appearance view ---
-        self.app_widget = DefaultAppearance(theme_context)
-        layout.addWidget(self.app_widget, alignment=Qt.AlignTop)
+        self.app_widget = DefaultAppearance(self.theme_context)
+        self.layout.addWidget(self.app_widget, alignment=Qt.AlignTop)
 
         # --- Smart policy view ---
         current_policy = getattr(self.settings_model, "smart_policy", "passphrase")
         self.policy_widget = DefaultSmartPolicy(
             current=current_policy,
-            theme_context=theme_context
+            theme_context=self.theme_context
         )
-        layout.addWidget(self.policy_widget, alignment=Qt.AlignTop)
+        self.layout.addWidget(self.policy_widget, alignment=Qt.AlignTop)
+
+        # --- Request Receipt view ---
+        receipt_model = getattr(self.settings_model, "request_receipt", None)
+        on_req = getattr(receipt_model, "on_request", False)
+        on_del = getattr(receipt_model, "on_delivery", False)
+
+        self.receipt_widget = DefaultRequestReceiptView(on_req, on_del, self.theme_context)
+        self.layout.addWidget(self.receipt_widget, alignment=Qt.AlignTop)
+
+        # --- Default Certificate view ---
+        add_cert = getattr(getattr(self.settings_model, "certificate", None), "add_certificate", False)
+        cert_path = self.settings_model.certificate.location
+        self.cert_widget = DefaultCertificateView(add_cert, cert_path, self.theme_context)
+        self.layout.addWidget(self.cert_widget, alignment=Qt.AlignTop)
 
         # --- Action buttons ---
         btn_row = QHBoxLayout()
@@ -83,7 +98,7 @@ class SettingsPage(QWidget):
         btn_row.addStretch()
         btn_row.addWidget(self.save_btn, alignment=Qt.AlignRight)
 
-        layout.addLayout(btn_row)
+        self.layout.addLayout(btn_row)
 
     def update_theme(self, ctx: ThemeContext):
         self.theme_context = ctx
@@ -94,6 +109,8 @@ class SettingsPage(QWidget):
             self.mfa_widget.update_theme(ctx)
         self.app_widget.update_theme(ctx)
         self.policy_widget.update_theme(ctx)
+        self.receipt_widget.update_theme(ctx)
+        self.cert_widget.update_theme(ctx)
 
     def _on_cancel(self):
         self._return_to_file_selection()
@@ -139,6 +156,26 @@ class SettingsPage(QWidget):
                 method == sel,
                 "default_settings", "smart_policy", "methods", method
             )
+
+        # --- Request Receipt ---
+        mgr.set_default(
+            self.receipt_widget.get_on_request(),
+            "default_settings", "request_receipt", "on_request"
+        )
+        mgr.set_default(
+            self.receipt_widget.get_on_delivery(),
+            "default_settings", "request_receipt", "on_delivery"
+        )
+
+        # --- Default Certificate view ---
+        mgr.set_default(
+            self.cert_widget.get_cert_setting(),
+            "default_settings", "certificate", "add_certificate"
+        )
+        mgr.set_default(
+            self.cert_widget.get_cert_path(),
+            "default_settings", "certificate", "location"
+        )
 
         # --- Write YAML back ---
         mgr.save_defaults()

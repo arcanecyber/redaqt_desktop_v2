@@ -170,7 +170,7 @@ class ProtectionFlowPage(QWidget):
             is_error, msg, incoming_encrypt = request_key(main_win.user_data)
 
             if is_error:
-                print(f"[DEBUG] Request key failed: {msg}")
+                #print(f"[DEBUG] Request key failed: {msg}")
                 self._show_error_message(msg)
                 return
 

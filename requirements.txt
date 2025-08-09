@@ -7,3 +7,7 @@ pypdf
 requests
 pydantic
 PyJWT
+numpy
+opencv-python
+cupy
+Pillow

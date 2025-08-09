@@ -1,6 +1,8 @@
 default_settings:
-  add_certificate: false
   appearance: dark
+  certificate:
+    add_certificate: true
+    location: data/My_logo.jpg
   mfa:
     methods:
       bio: false
@@ -13,8 +15,9 @@ default_settings:
     on_request: false
   smart_policy:
     methods:
-      lock_to_user: false
       do_not_open_after: false
       do_not_open_before: false
+      lock_to_user: false
       no_policy: true
+      open_with_keyword: false
       passphrase: false

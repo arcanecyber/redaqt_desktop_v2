@@ -31,9 +31,14 @@ class RequestReceipt(BaseModel):
     on_delivery: bool
 
 
+class CertificateSettings(BaseModel):
+    add_certificate: bool
+    location: str
+
+
 class DefaultSettings(BaseModel):
     appearance: Literal["dark", "light"]
     smart_policy: SmartPolicySettings
     request_receipt: RequestReceipt
-    add_certificate: bool
+    certificate: CertificateSettings
     mfa: MFASettings

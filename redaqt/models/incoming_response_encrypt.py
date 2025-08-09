@@ -34,6 +34,62 @@ class Point:
 
 
 @dataclass
+class Authority:
+    """Certificate authority metadata."""
+    issuer_name: str
+    issuer_email: str
+    issuer_uri: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Authority:
+        return cls(
+            issuer_name=data["issuer_name"],
+            issuer_email=data["issuer_email"],
+            issuer_uri=data["issuer_uri"],
+        )
+
+
+@dataclass
+class Issuer:
+    """Issuer metadata block."""
+    parent_certificate_id: str
+    name: str
+    organization: str
+    signing_time: str
+    expires_after: str
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Issuer:
+        return cls(
+            parent_certificate_id=data["parent_certificate_id"],
+            name=data["name"],
+            organization=data["organization"],
+            signing_time=data["signing_time"],
+            expires_after=data["expires_after"],
+        )
+
+
+@dataclass
+class Certificate:
+    """Structured certificate information returned by Efemeral."""
+    child_certificate_id: str
+    certificate_type: str
+    trace: str
+    issuer: Issuer
+    authority: Authority
+
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> Certificate:
+        return cls(
+            child_certificate_id=data["child_certificate_id"],
+            certificate_type=data["certificate_type"],
+            trace=data["trace"],
+            issuer=Issuer.from_dict(data["issuer"]),
+            authority=Authority.from_dict(data["authority"]),
+        )
+
+
+@dataclass
 class PQC:
     """Post-quantum config block."""
     mid: str
@@ -58,17 +114,20 @@ class Data:
     protocol: str
     protocol_version: str
     pqc: PQC
-    certificate: Optional[str]
+    certificate: Optional[Certificate]  # Updated type from str to Certificate
     crypto_key: str
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> Data:
+        cert = data.get("certificate")
+        certificate = Certificate.from_dict(cert) if isinstance(cert, dict) else None
+
         return cls(
             mos_version=data["mos_version"],
             protocol=data["protocol"],
             protocol_version=data["protocol_version"],
             pqc=PQC.from_dict(data["pqc"]),
-            certificate=data.get("certificate"),  # Defaults to None if missing
+            certificate=certificate,
             crypto_key=data["crypto_key"],
         )
 
@@ -87,15 +146,6 @@ class Management:
 class IncomingEncrypt:
     """
     Model for an incoming encrypt response.
-
-    Attributes:
-      management    – request metadata
-      error         – whether an error occurred
-      status_type   – high-level status (e.g. SUCCESS/FAIL)
-      status_code   – numeric status code
-      status_message– human-readable status
-      data          – encryption payload
-      checksum      – response integrity digest
     """
     management: Management
     error: bool
