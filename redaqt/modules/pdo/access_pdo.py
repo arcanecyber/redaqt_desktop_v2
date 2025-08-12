@@ -32,7 +32,8 @@ ERROR_PROTECTED_DOCUMENT = f"Could not read data from protected document"
 ERROR_NO_CRYPTO_KEY = "No Crypto key was returned by the service"
 
 
-def access_document(user_data, file_path: str) -> Tuple[bool, Optional[str], Optional[dict], Optional[np.ndarray], Optional[Path]]:
+def access_document(user_data, file_path: str) -> \
+        Tuple[bool,Optional[str], Optional[dict], Optional[np.ndarray], Optional[Path]]:
     """ Access the PDO and generate a request to decrypt the file
         *** Note; The Protected Document Object utilizes a PDF format.
 
@@ -53,12 +54,12 @@ def access_document(user_data, file_path: str) -> Tuple[bool, Optional[str], Opt
     # Validate the PDO file exists, else return an error and error message
     success, error_msg = validate_file_exists(file_path)
     if not success:
-        return False, error_msg, None, None
+        return False, error_msg, None, None, None
 
     # Extract the metadata from the PDO to process request
     success, error_msg, metadata = get_pdo_metadata(file_path)
     if not success:
-        return False, error_msg, None, None
+        return False, error_msg, None, None, None
 
     # Get the Davinci Cert from file
     success, davinci_certificate_image = extract_image_from_pdf(file_path)
@@ -77,17 +78,18 @@ def access_document(user_data, file_path: str) -> Tuple[bool, Optional[str], Opt
 
     # Process request to Efemeral to generate encryption key
     success, error_msg, receive_json = request_key(user_data, metadata)
+    print(f"[DEBUG access_pdo] Success:{success}    Error Message: {error_msg}\nReceive JSON: {receive_json}")
     if not success:
-        return False, error_msg, None, None
+        return False, error_msg, None, None, None
     else:
         # Validate that an encryption key was returned, else, return an error
         key_str = getattr(receive_json['data'], 'crypto_key', None)
         if not key_str:
-            return False, ERROR_NO_CRYPTO_KEY, None, None
+            return False, ERROR_NO_CRYPTO_KEY, None, None, None
 
     success, error_msg, temp_filenames = extract_attachments_from_pdo(file_path)
     if not success:
-        return False, error_msg, None, None
+        return False, error_msg, None, None, None
 
     # Decrypt each extracted file
     for temp_file in temp_filenames:
@@ -97,7 +99,7 @@ def access_document(user_data, file_path: str) -> Tuple[bool, Optional[str], Opt
         # Perform decryption
         success, output_path, decrypt_error = decrypt_file_aes256gcm(key_str, temp_file, save_to_filename)
         if not success:
-            return False, f"Decryption failed: {decrypt_error}", None, None
+            return False, f"Decryption failed: {decrypt_error}", None, None, None
 
         # === Clean up the encrypted temporary file ===
         cleanup_temp_file(Path(temp_file))

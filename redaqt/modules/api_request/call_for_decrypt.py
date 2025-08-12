@@ -69,6 +69,8 @@ def request_key(user_data, metadata: dict) -> Tuple[bool, Optional[str], Optiona
         'data': data
     }
 
+    print(f"[DEBUG call_for_decryption] Request JSON: {json.dumps(request_json)}")
+
     headers = {
         'Authorization': f'Bearer {secret_key}',
         'Content-Type': 'application/json',
