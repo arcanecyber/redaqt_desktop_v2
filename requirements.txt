@@ -9,5 +9,5 @@ pydantic
 PyJWT
 numpy
 opencv-python
-cupy
+cupy-cuda12x
 Pillow
